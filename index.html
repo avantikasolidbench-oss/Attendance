@@ -170,6 +170,7 @@ select:focus{border-color:var(--accent)}
 .chart-wrap.sm{height:150px}
 .filter-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
 .filter-row label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+.custom-range-sel{font-size:11px;padding:3px 7px}
 .late-flag{color:var(--danger);font-weight:800;font-size:13px}
 .trend-up{color:var(--green);font-weight:900;font-size:15px}
 .trend-dn{color:var(--danger);font-weight:900;font-size:15px}
@@ -209,11 +210,12 @@ select:focus{border-color:var(--accent)}
 
 
 /* ─── REVIEW GRID ─── */
-.rv-grid-wrap{overflow:auto;border:1px solid var(--border);border-radius:var(--r);background:var(--surface)}
+.rv-grid-wrap{overflow:auto;border:1px solid var(--border);border-radius:var(--r);background:var(--surface);
+  height:calc(100vh - 220px);position:relative;outline:none}
 .rv-table{border-collapse:collapse;font-size:11px;font-family:"DM Mono",monospace}
 .rv-table th{background:var(--surface2);padding:5px 7px;text-align:center;font-size:9px;font-weight:700;
   text-transform:uppercase;letter-spacing:.4px;color:var(--muted);border:1px solid var(--border);
-  white-space:nowrap;position:sticky;top:0;z-index:5}
+  white-space:nowrap;position:sticky;top:0;z-index:5;box-shadow:0 2px 0 var(--border)}
 .rv-table th.emp-col{left:0;z-index:6;min-width:130px;text-align:left;padding-left:10px}
 .rv-table th.sun{color:var(--danger)}
 .rv-table td{border:1px solid var(--border);padding:0;vertical-align:middle;text-align:center}
@@ -232,6 +234,8 @@ select:focus{border-color:var(--accent)}
 .rv-cell input{width:100%;height:100%;border:none;background:transparent;text-align:center;
   font-family:"DM Mono",monospace;font-size:10px;color:var(--text);outline:none;padding:0 2px;cursor:pointer}
 .rv-cell input:focus{background:rgba(192,82,26,.12);cursor:text}
+.rv-cell.focused{outline:2px solid var(--accent);outline-offset:-2px;z-index:3}
+.rv-cell input.active-cell{background:rgba(192,82,26,.15)}
 .rv-cell.absent{background:#fde8e3}
 .rv-cell.late{background:#fff3cd}
 .rv-cell.ot{background:#e8f4fd}
@@ -432,7 +436,7 @@ select:focus{border-color:var(--accent)}
       </div>
     </div>
     <!-- Grid view -->
-    <div class="rv-grid-wrap" id="rvGridWrap">
+    <div class="rv-grid-wrap" id="rvGridWrap" tabindex="0">
       <table class="rv-table" id="rvGrid"></table>
     </div>
 
@@ -493,15 +497,31 @@ select:focus{border-color:var(--accent)}
       <button class="btn btn-blue" onclick="refreshAnalytics()">↻ Refresh from Sheets</button>
     </div>
     <div class="kpi-grid" id="kpiGrid"></div>
-    <div class="filter-row">
-      <label>Period</label>
-      <select id="periodSel" onchange="renderAnalytics()">
-        <option value="6">Last 6 months</option>
-        <option value="12" selected>Last 12 months</option>
-        <option value="all">All time</option>
-      </select>
-      <label>Employee</label>
-      <select id="empSel" onchange="renderAnalytics()"><option value="all">All Employees</option></select>
+    <div class="filter-row" style="gap:12px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:7px">
+        <label>Quick Range</label>
+        <select id="periodSel" onchange="onPeriodPreset()" style="font-size:11px">
+          <option value="1">This month</option>
+          <option value="3">Last 3 months</option>
+          <option value="6">Last 6 months</option>
+          <option value="12" selected>Last 12 months</option>
+          <option value="all">All time</option>
+          <option value="custom">Custom range…</option>
+        </select>
+      </div>
+      <div id="customRangeWrap" style="display:none;align-items:center;gap:7px">
+        <label>From</label>
+        <select id="rangeFromMonth" onchange="renderAnalytics()" style="font-size:11px"></select>
+        <select id="rangeFromYear"  onchange="renderAnalytics()" style="font-size:11px"></select>
+        <label style="margin-left:4px">To</label>
+        <select id="rangeToMonth"   onchange="renderAnalytics()" style="font-size:11px"></select>
+        <select id="rangeToYear"    onchange="renderAnalytics()" style="font-size:11px"></select>
+      </div>
+      <div style="display:flex;align-items:center;gap:7px">
+        <label>Employee</label>
+        <select id="empSel" onchange="renderAnalytics()" style="font-size:11px"><option value="all">All Employees</option></select>
+      </div>
+      <div id="analyticsRangeLabel" style="font-size:11px;color:var(--muted);margin-left:auto"></div>
     </div>
     <div class="charts-row">
       <div class="chart-card">
@@ -1784,6 +1804,7 @@ function renderReview() {
   html += '</tbody>';
   grid.innerHTML = html;
   autoSaveReviewDraft();
+  initGridKeyboard();
 }
 
 // Update record by employee+day (used in grid inline edit)
@@ -2022,6 +2043,81 @@ function simulateFinalise(month, year) {
 // ════════════════════════════════════════════════════════
 // ANALYTICS PAGE
 // ════════════════════════════════════════════════════════
+function onPeriodPreset() {
+  const val = document.getElementById('periodSel').value;
+  const wrap = document.getElementById('customRangeWrap');
+  if (val === 'custom') {
+    wrap.style.display = 'flex';
+    populateRangeSelects();
+  } else {
+    wrap.style.display = 'none';
+  }
+  renderAnalytics();
+}
+
+function populateRangeSelects() {
+  if (!analyticsData) return;
+  // Build sorted month list from data
+  const monthKeys = [...new Set(analyticsData.map(d => d.year + '|' + MONTHS.indexOf(d.month)))]
+    .sort((a,b) => {
+      const [ay,am] = a.split('|').map(Number);
+      const [by,bm] = b.split('|').map(Number);
+      return ay !== by ? ay-by : am-bm;
+    });
+  if (!monthKeys.length) return;
+
+  const [minY, minM] = monthKeys[0].split('|').map(Number);
+  const [maxY, maxM] = monthKeys[monthKeys.length-1].split('|').map(Number);
+
+  ['From','To'].forEach(dir => {
+    const mSel = document.getElementById('range' + dir + 'Month');
+    const ySel = document.getElementById('range' + dir + 'Year');
+    if (!mSel || !ySel) return;
+    mSel.innerHTML = MONTHS.map((m,i) => '<option value="' + i + '">' + m + '</option>').join('');
+    const years = [...new Set(analyticsData.map(d => d.year))].sort((a,b)=>a-b);
+    ySel.innerHTML = years.map(y => '<option value="' + y + '">' + y + '</option>').join('');
+    if (dir === 'From') { mSel.value = minM; ySel.value = minY; }
+    else                { mSel.value = maxM; ySel.value = maxY; }
+  });
+}
+
+function getAnalyticsDateRange(allData) {
+  const period = document.getElementById('periodSel')?.value || '12';
+  const MONTH_KEYS = [...new Set(allData.map(d => d.year + '|' + MONTHS.indexOf(d.month)))]
+    .sort((a,b) => {
+      const [ay,am]=a.split('|').map(Number), [by,bm]=b.split('|').map(Number);
+      return ay!==by?ay-by:am-bm;
+    });
+
+  if (period === 'custom') {
+    const fromM = +(document.getElementById('rangeFromMonth')?.value ?? 0);
+    const fromY = +(document.getElementById('rangeFromYear')?.value ?? 2024);
+    const toM   = +(document.getElementById('rangeToMonth')?.value ?? 11);
+    const toY   = +(document.getElementById('rangeToYear')?.value ?? new Date().getFullYear());
+    const filtered = MONTH_KEYS.filter(k => {
+      const [y,m] = k.split('|').map(Number);
+      return (y > fromY || (y===fromY && m>=fromM)) && (y < toY || (y===toY && m<=toM));
+    });
+    updateRangeLabel(filtered);
+    return filtered;
+  }
+
+  if (period === 'all') { updateRangeLabel(MONTH_KEYS); return MONTH_KEYS; }
+  const n = +period;
+  const sliced = MONTH_KEYS.slice(-n);
+  updateRangeLabel(sliced);
+  return sliced;
+}
+
+function updateRangeLabel(keys) {
+  const el = document.getElementById('analyticsRangeLabel');
+  if (!el || !keys.length) return;
+  const [sy,sm] = keys[0].split('|').map(Number);
+  const [ey,em] = keys[keys.length-1].split('|').map(Number);
+  el.textContent = SHORT_MONTHS[sm] + ' ' + sy + ' → ' + SHORT_MONTHS[em] + ' ' + ey
+    + '  (' + keys.length + ' month' + (keys.length!==1?'s':'') + ')';
+}
+
 async function loadAndRenderAnalytics() {
   document.getElementById('analyticsSync').textContent = 'loading…';
   if (DEMO_MODE) {
@@ -2072,7 +2168,6 @@ function generateDemoAnalytics() {
 
 function renderAnalytics() {
   if (!analyticsData) return;
-  const period = document.getElementById('periodSel').value;
   const empFilter = document.getElementById('empSel').value;
 
   // Populate employee filter
@@ -2085,13 +2180,16 @@ function renderAnalytics() {
   let data = analyticsData;
   if (empFilter !== 'all') data = data.filter(d => d.emp === empFilter);
 
-  // Get months sorted
+  // Get date range from picker
+  const rangeKeys = getAnalyticsDateRange(analyticsData); // year|monthIdx format
+  const rangeSet = new Set(rangeKeys.map(k => { const [y,m]=k.split('|').map(Number); return MONTHS[m]+'|'+y; }));
+
   const allMonths = [...new Set(data.map(d => d.month + '|' + d.year))]
     .sort((a, b) => {
       const [am, ay] = a.split('|'); const [bm, by] = b.split('|');
       return ay !== by ? +ay - +by : MONTHS.indexOf(am) - MONTHS.indexOf(bm);
     });
-  const displayMonths = period === 'all' ? allMonths : allMonths.slice(-+period);
+  const displayMonths = allMonths.filter(mk => rangeSet.has(mk));
   const labels = displayMonths.map(mk => { const [m, y] = mk.split('|'); return SHORT_MONTHS[MONTHS.indexOf(m)] + ' ' + String(y).slice(2); });
 
   // Aggregate by month
@@ -2260,6 +2358,146 @@ function renderEmployeeTable() {
     '</td>' +
     '</tr>'
   ).join('');
+}
+
+
+// ════════════════════════════════════════════════════════
+// REVIEW GRID KEYBOARD NAVIGATION
+// ════════════════════════════════════════════════════════
+let rvFocusRow = -1, rvFocusCol = -1;
+
+function initGridKeyboard() {
+  const wrap = document.getElementById('rvGridWrap');
+  if (!wrap) return;
+  wrap.addEventListener('keydown', handleGridKey);
+  // Focus a cell when clicking
+  wrap.addEventListener('click', e => {
+    const cell = e.target.closest('.rv-cell');
+    if (cell) {
+      const tr = cell.closest('tr');
+      const table = cell.closest('table');
+      if (!tr || !table) return;
+      const rows = Array.from(table.querySelectorAll('tbody tr:not([style*="height:3px"])'));
+      rvFocusRow = rows.indexOf(tr);
+      const cells = Array.from(tr.querySelectorAll('.rv-cell'));
+      rvFocusCol = cells.indexOf(cell);
+    }
+  });
+}
+
+function handleGridKey(e) {
+  const wrap = document.getElementById('rvGridWrap');
+  const table = document.getElementById('rvGrid');
+  if (!table) return;
+
+  const rows = Array.from(table.querySelectorAll('tbody tr:not([style*="height:3px"])'));
+  if (!rows.length) return;
+
+  // Find currently focused input
+  const activeEl = document.activeElement;
+  const activeCell = activeEl && activeEl.tagName === 'INPUT' ? activeEl.closest('.rv-cell') : null;
+
+  if (activeCell) {
+    const tr = activeCell.closest('tr');
+    const cells = Array.from(tr.querySelectorAll('.rv-cell'));
+    rvFocusRow = rows.indexOf(tr);
+    rvFocusCol = cells.indexOf(activeCell);
+  }
+
+  const key = e.key;
+
+  // Tab / Shift+Tab — move across cells in same row
+  if (key === 'Tab') {
+    e.preventDefault();
+    const tr = rows[rvFocusRow];
+    if (!tr) return;
+    const cells = Array.from(tr.querySelectorAll('.rv-cell input:not([readonly])'));
+    const curIdx = cells.findIndex(c => c === activeEl);
+    const next = e.shiftKey ? cells[curIdx - 1] : cells[curIdx + 1];
+    if (next) { next.focus(); next.select(); }
+    else {
+      // Move to next/prev row
+      moveToRow(e.shiftKey ? -1 : 1, rows, rvFocusCol);
+    }
+    return;
+  }
+
+  // Arrow keys — navigate grid
+  if (['ArrowRight','ArrowLeft','ArrowDown','ArrowUp'].includes(key)) {
+    // Only intercept if not actively editing (no selection change)
+    if (activeEl && activeEl.tagName === 'INPUT' &&
+        key !== 'ArrowDown' && key !== 'ArrowUp') return; // let left/right work in input
+
+    e.preventDefault();
+    if (rvFocusRow < 0) rvFocusRow = 0;
+
+    if (key === 'ArrowDown')  moveToRow(1, rows, rvFocusCol);
+    if (key === 'ArrowUp')    moveToRow(-1, rows, rvFocusCol);
+    if (key === 'ArrowRight') moveToCol(1, rows);
+    if (key === 'ArrowLeft')  moveToCol(-1, rows);
+    return;
+  }
+
+  // Enter — move down
+  if (key === 'Enter' && activeEl && activeEl.tagName === 'INPUT') {
+    e.preventDefault();
+    moveToRow(1, rows, rvFocusCol);
+    return;
+  }
+
+  // Escape — blur current input
+  if (key === 'Escape' && activeEl && activeEl.tagName === 'INPUT') {
+    activeEl.blur();
+    wrap.focus();
+    return;
+  }
+}
+
+function moveToRow(dir, rows, colIdx) {
+  let nextRow = rvFocusRow + dir;
+  // Skip separator rows and non-editable rows (OT, STS)
+  while (nextRow >= 0 && nextRow < rows.length) {
+    const tr = rows[nextRow];
+    const label = tr.querySelector('.rv-row-lbl');
+    const labelText = label ? label.textContent.trim() : '';
+    if (labelText === 'IN' || labelText === 'OUT') {
+      const inputs = tr.querySelectorAll('.rv-cell input:not([readonly])');
+      const target = inputs[Math.min(colIdx, inputs.length-1)] || inputs[0];
+      if (target) {
+        rvFocusRow = nextRow;
+        target.focus(); target.select();
+        scrollIntoViewIfNeeded(target);
+        return;
+      }
+    }
+    nextRow += dir;
+  }
+}
+
+function moveToCol(dir, rows) {
+  const tr = rows[rvFocusRow];
+  if (!tr) return;
+  const inputs = Array.from(tr.querySelectorAll('.rv-cell input:not([readonly])'));
+  const curIdx = inputs.findIndex(i => i === document.activeElement);
+  const nextIdx = curIdx + dir;
+  if (nextIdx >= 0 && nextIdx < inputs.length) {
+    rvFocusCol = nextIdx;
+    inputs[nextIdx].focus(); inputs[nextIdx].select();
+    scrollIntoViewIfNeeded(inputs[nextIdx]);
+  }
+}
+
+function scrollIntoViewIfNeeded(el) {
+  const wrap = document.getElementById('rvGridWrap');
+  if (!wrap || !el) return;
+  const wrapRect = wrap.getBoundingClientRect();
+  const elRect = el.getBoundingClientRect();
+  // Horizontal scroll
+  if (elRect.right > wrapRect.right - 20) wrap.scrollLeft += elRect.right - wrapRect.right + 60;
+  if (elRect.left < wrapRect.left + 162) wrap.scrollLeft -= wrapRect.left + 162 - elRect.left + 20;
+  // Vertical scroll
+  if (elRect.bottom > wrapRect.bottom - 10) wrap.scrollTop += elRect.bottom - wrapRect.bottom + 30;
+  if (elRect.top < wrapRect.top + 30) wrap.scrollTop -= wrapRect.top + 30 - elRect.top;
 }
 
 // ════════════════════════════════════════════════════════
