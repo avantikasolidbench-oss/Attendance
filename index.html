@@ -471,51 +471,45 @@ select:focus{border-color:var(--accent)}
   <div class="main">
     <div class="page-hdr">
       <h1>Settings</h1>
-      <p>Configure Google Sheets and PINs. All values saved to this browser's localStorage — nothing hardcoded.</p>
+      <p>Saved to this browser only. Nothing is hardcoded in the file.</p>
     </div>
 
+    <!-- Google Sheets -->
     <div class="card" style="margin-bottom:14px">
       <div class="settings-section">
-        <h3>🔗 Google Sheets Integration</h3>
+        <h3>Google Sheets</h3>
         <div class="settings-grid">
           <div class="sf full">
-            <label>OAuth Client ID</label>
-            <input type="text" id="cfg-clientId" placeholder="xxxx.apps.googleusercontent.com">
-            <div class="hint">Create at console.cloud.google.com → APIs → Credentials → OAuth 2.0 (Web). Add your GitHub Pages URL as an authorised origin.</div>
+            <label>Apps Script Web App URL</label>
+            <input type="text" id="cfg-webAppUrl" placeholder="https://script.google.com/macros/s/…/exec">
+            <div class="hint">Already pre-filled. Only update if you redeploy the Apps Script.</div>
           </div>
           <div class="sf full">
-            <label>Spreadsheet ID</label>
-            <input type="text" id="cfg-spreadsheetId" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms">
-            <div class="hint">From the Sheet URL: /spreadsheets/d/<b>THIS_PART</b>/edit</div>
+            <label>Anthropic API Key <span style="text-transform:none;letter-spacing:0;font-weight:400">(for reading register photos)</span></label>
+            <input type="password" id="cfg-apiKey" placeholder="sk-ant-…">
+            <div class="hint">Get from <b>console.anthropic.com</b> → API Keys. Used only for OCR — never sent anywhere else.</div>
           </div>
-          <div class="sf">
-            <label>Analytics Sheet Name</label>
-            <input type="text" id="cfg-analyticsSheet" placeholder="_Analytics">
-            <div class="hint">Auto-created on first save. Leave as _Analytics.</div>
-          </div>
-          <div class="sf" style="justify-content:flex-end">
-            <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:flex-end">
-              <button class="btn btn-primary" onclick="saveSettings()">💾 Save</button>
-              <button class="btn btn-outline" onclick="testSheets()">🔗 Test</button>
-              <button class="btn btn-blue" onclick="connectGoogle()">Connect Google →</button>
-            </div>
-          </div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="saveSettings()">💾 Save</button>
+          <button class="btn btn-outline" onclick="testSheets()">🔗 Test Connection</button>
         </div>
         <div id="testResult" class="test-result"></div>
       </div>
     </div>
 
+    <!-- PINs -->
     <div class="card" style="margin-bottom:14px">
       <div class="settings-section">
-        <h3>🔐 Access PINs <span style="font-size:10px;font-weight:500;color:var(--muted)">(Super Admin only)</span></h3>
+        <h3>Access PINs <span style="font-size:10px;font-weight:400;color:var(--muted)">(Super Admin only)</span></h3>
         <div class="settings-grid">
           <div class="sf">
             <label>Finance Manager PIN</label>
-            <input type="password" id="cfg-pinFinance" placeholder="Leave blank to keep current" maxlength="6">
+            <input type="password" id="cfg-pinFinance" maxlength="6" placeholder="Leave blank to keep current">
           </div>
           <div class="sf">
             <label>Super Admin PIN</label>
-            <input type="password" id="cfg-pinAdmin" placeholder="Leave blank to keep current" maxlength="6">
+            <input type="password" id="cfg-pinAdmin" maxlength="6" placeholder="Leave blank to keep current">
           </div>
         </div>
         <div style="margin-top:11px">
@@ -524,97 +518,29 @@ select:focus{border-color:var(--accent)}
       </div>
     </div>
 
+    <!-- Employee List -->
     <div class="card" style="margin-bottom:14px">
       <div class="settings-section">
-        <h3>👥 Employee List</h3>
+        <h3>Employee List</h3>
         <div class="sf full" style="margin-bottom:10px">
           <label>One name per line — matched against OCR output</label>
-          <textarea id="cfg-employees" rows="9" style="resize:vertical;line-height:1.9"></textarea>
+          <textarea id="cfg-employees" rows="12" style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--rr);padding:9px;font-family:'Nunito',sans-serif;font-size:12px;width:100%;resize:vertical;line-height:1.9;outline:none;color:var(--text)"></textarea>
         </div>
         <button class="btn btn-primary" onclick="saveEmployees()">💾 Save Employee List</button>
       </div>
     </div>
 
-    <div class="card" style="border-color:rgba(192,57,43,.2)">
-      <div class="settings-section" style="margin-bottom:0">
-        <h3 style="color:var(--danger)">⚠ Danger Zone</h3>
-        <div style="display:flex;gap:7px;flex-wrap:wrap">
-          <button class="btn btn-outline" style="border-color:var(--danger);color:var(--danger)" onclick="if(confirm('Clear all draft data?'))clearAllDrafts()">🗑 Clear All Drafts</button>
-          <button class="btn btn-outline" style="border-color:var(--danger);color:var(--danger)" onclick="disconnectGoogle()">✕ Disconnect Google</button>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-
-<!-- ══ SETTINGS SCREEN ══ -->
-<div id="settingsScreen" class="screen">
-  <header>
-    <div class="wordmark-hdr">solid<span>bench</span></div>
-    <div class="hdr-nav">
-      <button class="nav-btn" id="nav4-upload" onclick="showPage('upload')">Upload</button>
-      <button class="nav-btn" id="nav4-review" onclick="showPage('review')">Review</button>
-      <button class="nav-btn" id="nav4-analytics" onclick="showPage('analytics')">Analytics</button>
-      <button class="nav-btn active" id="nav4-settings" onclick="showPage('settings')">Settings</button>
-    </div>
-    <div class="hdr-right">
-      <span class="role-badge" id="roleLabel4">Finance Manager</span>
-      <button class="hdr-btn" onclick="logout()">Sign Out</button>
-    </div>
-  </header>
-  <div class="main">
-    <div class="page-hdr"><h1>Settings</h1><p>Saved to this browser only. Nothing is hardcoded.</p></div>
-    <div class="card" style="margin-bottom:14px">
-      <div class="settings-section">
-        <h3>Google Sheets</h3>
-        <div class="settings-grid">
-          <div class="sf full">
-            <label>Apps Script Web App URL</label>
-            <input type="text" id="cfg-webAppUrl" placeholder="https://script.google.com/macros/s/…/exec">
-          </div>
-          <div class="sf full">
-            <label>Anthropic API Key (for OCR)</label>
-            <input type="password" id="cfg-apiKey" placeholder="sk-ant-…">
-            <div class="hint">Get from console.anthropic.com → API Keys</div>
-          </div>
-        </div>
-        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-primary" onclick="saveSettings()">Save</button>
-          <button class="btn btn-outline" onclick="testSheets()">Test Connection</button>
-        </div>
-        <div id="testResult" class="test-result"></div>
-      </div>
-    </div>
-    <div class="card" style="margin-bottom:14px">
-      <div class="settings-section">
-        <h3>Access PINs <span style="font-size:10px;font-weight:500;color:var(--muted)">(Super Admin only)</span></h3>
-        <div class="settings-grid">
-          <div class="sf"><label>Finance Manager PIN</label><input type="password" id="cfg-pinFinance" maxlength="6" placeholder="New PIN"></div>
-          <div class="sf"><label>Super Admin PIN</label><input type="password" id="cfg-pinAdmin" maxlength="6" placeholder="New PIN"></div>
-        </div>
-        <div style="margin-top:11px"><button class="btn btn-primary" id="savePinBtn" onclick="savePins()">Update PINs</button></div>
-      </div>
-    </div>
-    <div class="card" style="margin-bottom:14px">
-      <div class="settings-section">
-        <h3>Employee List</h3>
-        <div class="sf full" style="margin-bottom:10px">
-          <label>One name per line</label>
-          <textarea id="cfg-employees" rows="10" style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--rr);padding:9px;font-family:Nunito,sans-serif;font-size:12px;width:100%;resize:vertical;line-height:1.9;outline:none"></textarea>
-        </div>
-        <button class="btn btn-primary" onclick="saveEmployees()">Save Employee List</button>
-      </div>
-    </div>
-    <div class="card" style="border-color:rgba(192,57,43,.2)">
+    <!-- Danger Zone -->
+    <div class="card" style="border-color:rgba(192,57,43,.25)">
       <div class="settings-section" style="margin-bottom:0">
         <h3 style="color:var(--danger)">Danger Zone</h3>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-outline" style="border-color:var(--danger);color:var(--danger)" onclick="if(confirm('Clear all drafts?'))clearAllDrafts()">Clear All Drafts</button>
-          <button class="btn btn-outline" style="border-color:var(--danger);color:var(--danger)" onclick="disconnectGoogle()">Disconnect Sheets</button>
+          <button class="btn btn-outline" style="border-color:var(--danger);color:var(--danger)" onclick="if(confirm('Clear all review drafts?'))clearAllDrafts()">🗑 Clear All Drafts</button>
+          <button class="btn btn-outline" style="border-color:var(--danger);color:var(--danger)" onclick="disconnectGoogle()">✕ Disconnect Sheets</button>
         </div>
       </div>
     </div>
+
   </div>
 </div>
 
@@ -1799,28 +1725,29 @@ function saveStoredConfig(extra) {
 
 function populateSettings() {
   try {
-    const cfg = JSON.parse(localStorage.getItem(LS_CONFIG) || '{}');
-    document.getElementById('cfg-clientId').value = cfg.clientId || '';
-    document.getElementById('cfg-spreadsheetId').value = cfg.spreadsheetId || '';
-    document.getElementById('cfg-analyticsSheet').value = cfg.analyticsSheet || '_Analytics';
-    document.getElementById('cfg-employees').value = (cfg.employees || DEFAULT_EMPLOYEES).join('\n');
-    document.getElementById('cfg-pinFinance').value = '';
-    document.getElementById('cfg-pinAdmin').value = '';
-    const pb = document.getElementById('savePinBtn');
+    const cfg = JSON.parse(localStorage.getItem(LS_CONFIG)||'{}');
+    const el = id => document.getElementById(id);
+    if (el('cfg-webAppUrl')) el('cfg-webAppUrl').value = cfg.webAppUrl || CONFIG.WEB_APP_URL || '';
+    if (el('cfg-apiKey'))    el('cfg-apiKey').value    = cfg.apiKey ? '••••••••••••' : '';
+    if (el('cfg-employees')) el('cfg-employees').value = (cfg.employees || DEFAULT_EMPLOYEES).join('\n');
+    if (el('cfg-pinFinance')) el('cfg-pinFinance').value = '';
+    if (el('cfg-pinAdmin'))   el('cfg-pinAdmin').value   = '';
+    const pb = el('savePinBtn');
     if (pb) pb.disabled = currentRole !== 'superadmin';
   } catch {}
 }
 
 function saveSettings() {
-  const clientId = document.getElementById('cfg-clientId').value.trim();
-  const spreadsheetId = document.getElementById('cfg-spreadsheetId').value.trim();
-  const analyticsSheet = document.getElementById('cfg-analyticsSheet').value.trim() || '_Analytics';
-  if (!clientId || !spreadsheetId) { toast('Client ID and Spreadsheet ID are required', 'err'); return; }
-  CONFIG.CLIENT_ID = clientId;
-  CONFIG.SPREADSHEET_ID = spreadsheetId;
-  CONFIG.ANALYTICS_SHEET = analyticsSheet;
-  saveStoredConfig({ clientId, spreadsheetId, analyticsSheet });
+  const url    = document.getElementById('cfg-webAppUrl').value.trim();
+  const apiKey = document.getElementById('cfg-apiKey').value.trim();
+  if (!url || !url.includes('script.google.com')) { toast('Enter a valid Apps Script Web App URL', 'err'); return; }
+  CONFIG.WEB_APP_URL = url;
+  if (apiKey && !apiKey.includes('•')) CONFIG.ANTHROPIC_KEY = apiKey;
+  DEMO_MODE = false; sheetsReady = true;
+  setSheetsStatus('ok', 'Sheets connected');
+  saveStoredConfig({ webAppUrl: url, ...(apiKey && !apiKey.includes('•') && { apiKey }) });
   toast('Settings saved ✓', 'ok');
+  loadHistory();
 }
 
 function saveEmployees() {
