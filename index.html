@@ -1622,7 +1622,35 @@ function renderReview() {
 
   // Build employee rows — 4 rows each (IN, OUT, OT, STS)
   filteredEmps.forEach((emp, ei) => {
-    const rowTypes = ['IN','OUT','OT','STS'];
+    // ── Pre-calculate summary values for this employee ──
+    let cP=0, cWS=0, cSun=0, cH=0, cL=0, cA=0, totalOTMins=0;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dn = dow(d), isSun = (dn==='Sun'), isHol = holidaySet.has(d);
+      const rec = (empDayMap[emp+'|'+d] || [])[0];
+      if (isHol) { cH++; }
+      else if (isSun) {
+        if (rec && rec.inTime && !['','A','Sun','L','H'].includes(rec.inTime)) cWS++;
+        else if (rec && rec.status==='Absent') cA++;
+        else cSun++;
+      } else if (!rec || rec.status==='Absent' || rec.inTime==='A' || (!rec.inTime&&!rec.outTime)) { cA++; }
+      else if (['L','M'].includes(rec.inTime)) { cL++; }
+      else { cP++; }
+      if (rec && rec.inTime && rec.outTime && rec.status!=='Absent') {
+        try {
+          const empDept3 = DEPT_MAP[emp] || DEPT_MAP[emp.toUpperCase()] || 'Pro. Staff';
+          const std = isSun ? 0.5 : (empDept3==='Office Staff' ? 9.0 : 8.5);
+          const [ih,im]=rec.inTime.split(':').map(Number);
+          const [oh,om]=rec.outTime.split(':').map(Number);
+          const ot = Math.max((oh+om/60)-(ih+im/60)-std, 0);
+          totalOTMins += Math.round(ot*60);
+        } catch {}
+      }
+    }
+    const tW = cP+cWS+cSun+cH+cL;
+    const otStr = totalOTMins > 0 ? Math.floor(totalOTMins/60)+'h'+(totalOTMins%60>0?totalOTMins%60+'m':'') : '—';
+    const sumVals = [cP, cWS, cSun, cH, cL, cA, tW, tW+cA, otStr];
+
+        const rowTypes = ['IN','OUT','OT','STS'];
     rowTypes.forEach((type, ti) => {
       html += '<tr>';
 
@@ -1725,46 +1753,21 @@ function renderReview() {
             + '</td>';
         }
       }
+      // Summary cols — show on IN row, blank background on others
+      if (ti === 0) {
+        sumVals.forEach((v, si) => {
+          const isOT = (si === 8);
+          const isEmpty = !isOT && (v === 0);
+          html += '<td style="text-align:center;font-size:11px;font-weight:700;background:#eaf4fb;' +
+            'color:' + (isOT && v!=='—' ? '#1a5a9e' : isEmpty ? '#ccc' : '#222') +
+            ';padding:3px 6px;border:1px solid #d5e8f0;white-space:nowrap">' +
+            (isEmpty ? '—' : v) + '</td>';
+        });
+      } else {
+        sumVals.forEach(() => { html += '<td style="background:#eaf4fb;border:1px solid #d5e8f0"></td>'; });
+      }
       html += '</tr>';
     });
-
-    // ── Summary columns — on IN row only ──
-    // Count STS values for this employee across the month
-    const empRecs = reviewRecords.filter(r => r.emp === emp);
-    let cP=0, cWS=0, cSun=0, cH=0, cL=0, cA=0;
-    let totalOTMins = 0;
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dn = dow(d);
-      const isSun = dn === 'Sun';
-      const isHol = holidaySet.has(d);
-      const recs = empDayMap[emp+'|'+d] || [];
-      const rec = recs[0];
-      if (isHol) { cH++; }
-      else if (isSun) {
-        if (rec && rec.inTime && !['','A','Sun','L','H'].includes(rec.inTime)) cWS++;
-        else if (rec && rec.status === 'Absent') cA++;
-        else cSun++;
-      } else if (!rec || rec.status === 'Absent' || rec.inTime === 'A' || (!rec.inTime && !rec.outTime)) { cA++; }
-      else if (rec.inTime === 'L') { cL++; }
-      else { cP++; }
-      // OT
-      if (rec && rec.inTime && rec.outTime && rec.status !== 'Absent') {
-        try {
-          const empDept2 = DEPT_MAP[emp] || DEPT_MAP[emp.toUpperCase()] || 'Pro. Staff';
-          const std = isSun ? 0.5 : (empDept2 === 'Office Staff' ? 9.0 : 8.5);
-          const [ih,im]=rec.inTime.split(':').map(Number);
-          const [oh,om]=rec.outTime.split(':').map(Number);
-          const worked=(oh+om/60)-(ih+im/60);
-          const ot = Math.max(worked - std, 0);
-          totalOTMins += Math.round(ot * 60);
-        } catch {}
-      }
-    }
-    const tW = cP + cWS + cSun + cH + cL;
-    const tDay = tW + cA;
-    const otH = Math.floor(totalOTMins/60), otM = totalOTMins%60;
-    const otStr = totalOTMins > 0 ? otH + 'h' + (otM>0?otM+'m':'') : '—';
-    const sumVals = [cP, cWS, cSun, cH, cL, cA, tW, tDay, otStr];
 
     // ── GP row — show if any GP entries exist for this employee this month ──
     const gpRawEntries = getGPEntries(monthName, year).filter(e => e.emp === emp);
@@ -2424,17 +2427,15 @@ function handleGridKey(e) {
 
   // Arrow keys — navigate grid
   if (['ArrowRight','ArrowLeft','ArrowDown','ArrowUp'].includes(key)) {
-    // Only intercept if not actively editing (no selection change)
-    if (activeEl && activeEl.tagName === 'INPUT' &&
-        key !== 'ArrowDown' && key !== 'ArrowUp') return; // let left/right work in input
-
+    const inInput = activeEl && activeEl.tagName === 'INPUT';
     e.preventDefault();
     if (rvFocusRow < 0) rvFocusRow = 0;
 
-    if (key === 'ArrowDown')  moveToRow(1, rows, rvFocusCol);
-    if (key === 'ArrowUp')    moveToRow(-1, rows, rvFocusCol);
-    if (key === 'ArrowRight') moveToCol(1, rows);
-    if (key === 'ArrowLeft')  moveToCol(-1, rows);
+    if (key === 'ArrowDown')  { moveToRow(1, rows, rvFocusCol); return; }
+    if (key === 'ArrowUp')    { moveToRow(-1, rows, rvFocusCol); return; }
+    // Left/Right: move between cells (blur input first if needed)
+    if (key === 'ArrowRight') { if (inInput) activeEl.blur(); moveToCol(1, rows); return; }
+    if (key === 'ArrowLeft')  { if (inInput) activeEl.blur(); moveToCol(-1, rows); return; }
     return;
   }
 
