@@ -606,9 +606,32 @@ select:focus{border-color:var(--accent)}
     <div class="card" style="margin-bottom:14px">
       <div class="settings-section">
         <h3>Employee List</h3>
-        <div class="sf full" style="margin-bottom:10px">
-          <label>One name per line — matched against OCR output</label>
-          <textarea id="cfg-employees" rows="12" style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--rr);padding:9px;font-family:'Nunito',sans-serif;font-size:12px;width:100%;resize:vertical;line-height:1.9;outline:none;color:var(--text)"></textarea>
+
+        <!-- Add new employee -->
+        <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:14px;flex-wrap:wrap">
+          <div class="sf" style="flex:1;min-width:160px">
+            <label>Name</label>
+            <input type="text" id="new-emp-name" placeholder="e.g. SURESH KUMAR" style="text-transform:uppercase">
+          </div>
+          <div class="sf" style="width:160px">
+            <label>Department</label>
+            <select id="new-emp-dept">
+              <option value="Pro. Staff">Pro. Staff</option>
+              <option value="Office Staff">Office Staff</option>
+              <option value="Own">Own</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" onclick="addNewEmployee()" style="height:38px;align-self:flex-end">+ Add Employee</button>
+        </div>
+
+        <!-- Employee table -->
+        <div class="table-wrap" style="margin-bottom:12px">
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th style="text-align:left;padding-left:10px">Name</th><th>Department</th><th>Working Time</th><th></th></tr></thead>
+              <tbody id="empListBody"></tbody>
+            </table>
+          </div>
         </div>
         <button class="btn btn-primary" onclick="saveEmployees()">💾 Save Employee List</button>
       </div>
@@ -1570,6 +1593,11 @@ function renderReview() {
     const style = isSun ? ' class="sun"' : isHol ? ' style="color:var(--green)"' : '';
     html += '<th' + style + '>' + d + '<br><span style="font-weight:400;font-size:8px">' + dn + '</span></th>';
   }
+  // Summary column headers
+  const SUM_COLS = ['T.P','W/S','SUN','T.H','T.L','T.A','T.W.Day','T.Day','OT Time'];
+  SUM_COLS.forEach(s => {
+    html += '<th style="min-width:48px;background:#eaf4fb;color:var(--blue)">' + s + '</th>';
+  });
   html += '</tr></thead><tbody>';
 
   // Build employee rows — 4 rows each (IN, OUT, OT, STS)
@@ -1680,6 +1708,44 @@ function renderReview() {
       html += '</tr>';
     });
 
+    // ── Summary columns — on IN row only ──
+    // Count STS values for this employee across the month
+    const empRecs = reviewRecords.filter(r => r.emp === emp);
+    let cP=0, cWS=0, cSun=0, cH=0, cL=0, cA=0;
+    let totalOTMins = 0;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dn = dow(d);
+      const isSun = dn === 'Sun';
+      const isHol = holidaySet.has(d);
+      const recs = empDayMap[emp+'|'+d] || [];
+      const rec = recs[0];
+      if (isHol) { cH++; }
+      else if (isSun) {
+        if (rec && rec.inTime && !['','A','Sun','L','H'].includes(rec.inTime)) cWS++;
+        else if (rec && rec.status === 'Absent') cA++;
+        else cSun++;
+      } else if (!rec || rec.status === 'Absent' || rec.inTime === 'A' || (!rec.inTime && !rec.outTime)) { cA++; }
+      else if (rec.inTime === 'L') { cL++; }
+      else { cP++; }
+      // OT
+      if (rec && rec.inTime && rec.outTime && rec.status !== 'Absent') {
+        try {
+          const empDept2 = DEPT_MAP[emp] || DEPT_MAP[emp.toUpperCase()] || 'Pro. Staff';
+          const std = isSun ? 0.5 : (empDept2 === 'Office Staff' ? 9.0 : 8.5);
+          const [ih,im]=rec.inTime.split(':').map(Number);
+          const [oh,om]=rec.outTime.split(':').map(Number);
+          const worked=(oh+om/60)-(ih+im/60);
+          const ot = Math.max(worked - std, 0);
+          totalOTMins += Math.round(ot * 60);
+        } catch {}
+      }
+    }
+    const tW = cP + cWS + cSun + cH + cL;
+    const tDay = tW + cA;
+    const otH = Math.floor(totalOTMins/60), otM = totalOTMins%60;
+    const otStr = totalOTMins > 0 ? otH + 'h' + (otM>0?otM+'m':'') : '—';
+    const sumVals = [cP, cWS, cSun, cH, cL, cA, tW, tDay, otStr];
+
     // ── GP row — show if any GP entries exist for this employee this month ──
     const gpRawEntries = getGPEntries(monthName, year).filter(e => e.emp === emp);
     const gpAllocated  = getGPAllocationForEmployee(emp, monthName, year);
@@ -1707,11 +1773,12 @@ function renderReview() {
           html += '<td class="rv-cell empty"></td>';
         }
       }
+      sumVals.forEach(() => html += '<td style="background:#e3f2fd"></td>');
       html += '</tr>';
     }
 
     // Visual separator between employees
-    html += '<tr><td colspan="' + (daysInMonth+2) + '" style="height:3px;background:var(--border);padding:0"></td></tr>';
+    html += '<tr><td colspan="' + (daysInMonth+2+9) + '" style="height:3px;background:var(--border);padding:0"></td></tr>';
   });
 
   html += '</tbody>';
@@ -2092,6 +2159,108 @@ function renderAnalytics() {
 
 
 
+
+
+// ════════════════════════════════════════════════════════
+// EMPLOYEE LIST MANAGEMENT
+// ════════════════════════════════════════════════════════
+function getEmployeeObjects() {
+  // Returns [{name, dept}] — from config or defaults
+  try {
+    const cfg = JSON.parse(localStorage.getItem(LS_CONFIG)||'{}');
+    if (cfg.employeesObj && cfg.employeesObj.length) return cfg.employeesObj;
+    // Migrate from old string array if exists
+    if (cfg.employees && cfg.employees.length) {
+      return cfg.employees.map(name => ({
+        name,
+        dept: DEPT_MAP[name] || DEPT_MAP[name.toUpperCase()] || 'Pro. Staff'
+      }));
+    }
+  } catch {}
+  return [...DEFAULT_EMPLOYEES_OBJ];
+}
+
+function saveEmployeeObjects(empObjs) {
+  const names = empObjs.map(e => e.name);
+  CONFIG.EMPLOYEES = names;
+  // Update global DEPT_MAP with any new employees
+  empObjs.forEach(e => { DEPT_MAP[e.name] = e.dept; DEPT_MAP[e.name.toUpperCase()] = e.dept; });
+  saveStoredConfig({ employeesObj: empObjs, employees: names });
+}
+
+
+function changeEmployeeDeptAttr(sel) {
+  const name = sel.dataset.empname;
+  changeEmployeeDept(name, sel.value);
+}
+function removeEmployeeAttr(btn) {
+  const name = btn.dataset.empname;
+  removeEmployee(name);
+}
+
+function addNewEmployee() {
+  const nameEl = document.getElementById('new-emp-name');
+  const deptEl = document.getElementById('new-emp-dept');
+  const name = nameEl.value.trim().toUpperCase();
+  const dept = deptEl.value;
+  if (!name) { toast('Enter employee name', 'err'); return; }
+
+  const emps = getEmployeeObjects();
+  if (emps.find(e => e.name.toUpperCase() === name)) {
+    toast(name + ' already in list', 'err'); return;
+  }
+  emps.push({ name, dept });
+  saveEmployeeObjects(emps);
+  nameEl.value = '';
+  renderEmployeeTable();
+  toast(name + ' added as ' + dept + ' ✓', 'ok');
+}
+
+function removeEmployee(name) {
+  if (!confirm('Remove ' + name + ' from employee list?')) return;
+  const emps = getEmployeeObjects().filter(e => e.name !== name);
+  saveEmployeeObjects(emps);
+  renderEmployeeTable();
+  toast(name + ' removed', 'ok');
+}
+
+function changeEmployeeDept(name, newDept) {
+  const emps = getEmployeeObjects();
+  const emp = emps.find(e => e.name === name);
+  if (emp) {
+    emp.dept = newDept;
+    saveEmployeeObjects(emps);
+    renderEmployeeTable(); // re-render so working time updates instantly
+    toast(name + ' → ' + newDept + ' (Working time: ' + ({'Pro. Staff':'08:30','Office Staff':'09:00','Own':'—'}[newDept]||'—') + ')', 'ok');
+  }
+}
+
+function renderEmployeeTable() {
+  const body = document.getElementById('empListBody');
+  if (!body) return;
+  const emps = getEmployeeObjects();
+  const deptColor = {
+    'Pro. Staff': 'b-ok',
+    'Office Staff': 'b-blue',
+    'Own': 'b-neutral'
+  };
+  const wt = { 'Pro. Staff': '08:30', 'Office Staff': '09:00', 'Own': '—' };
+  body.innerHTML = emps.map((e, i) =>
+    '<tr>' +
+    '<td style="padding:6px 10px;font-weight:600;font-size:12px">' + e.name + '</td>' +
+    '<td style="text-align:center">' +
+        '<option value="Pro. Staff"' + (e.dept==='Pro. Staff'?' selected':'') + '>Pro. Staff</option>' +
+        '<option value="Office Staff"' + (e.dept==='Office Staff'?' selected':'') + '>Office Staff</option>' +
+        '<option value="Own"' + (e.dept==='Own'?' selected':'') + '>Own</option>' +
+      '</select>' +
+    '</td>' +
+    '<td style="text-align:center;font-size:11px;color:var(--muted);font-family:DM Mono">' + (wt[e.dept]||'—') + '</td>' +
+    '<td style="text-align:center">' +
+      '<button class="btn btn-outline" style="font-size:9px;padding:2px 7px;color:var(--danger);border-color:var(--danger)" data-empname="' + e.name.replace(/&/g,'&amp;').replace(/"/g,'&quot;') + '" onclick="removeEmployeeAttr(this)">&#x2715;</button>' +
+    '</td>' +
+    '</tr>'
+  ).join('');
+}
 
 // ════════════════════════════════════════════════════════
 // GATE PASS
@@ -2813,15 +2982,29 @@ function toast(msg, type) {
 // ════════════════════════════════════════════════════════
 
 // ─── SETTINGS & CONFIG ───────────────────────────────────
-const DEFAULT_EMPLOYEES = [
-  'RAMAUTAR MAHTO','DILIP SHARMA','NASARUDDIN ALI','RADHE SHYAM','MULCHANDRA',
-  'MD SOHIL','MANOJ KUMAR','RAJU','Brijmohan','RAGHVINDER',
-  'Raj Kumar Tripathi','Hemant Tiwari','Bablu','SONU','Shilanath Ray',
-  'Ashok','Rohit','jitender','Anand','PAWAN',
-  'KULDEEP','BIRENDER','SAHIB SINGH','Manjeet','RAHUL KUMAR JHA',
-  'YASH','DEBANJAN','ADARSH BABU','RAJA KUSHWAHA','ANANAYA SAXENA',
-  'Avantika Oli'
+// Employee list — stored as [{name, dept}]
+const DEFAULT_EMPLOYEES_OBJ = [
+  {name:'RAMAUTAR MAHTO',dept:'Pro. Staff'},{name:'DILIP SHARMA',dept:'Pro. Staff'},
+  {name:'NASARUDDIN ALI',dept:'Pro. Staff'},{name:'RADHE SHYAM',dept:'Pro. Staff'},
+  {name:'MULCHANDRA',dept:'Pro. Staff'},{name:'MD SOHIL',dept:'Pro. Staff'},
+  {name:'MANOJ KUMAR',dept:'Pro. Staff'},{name:'RAJU',dept:'Pro. Staff'},
+  {name:'Brijmohan',dept:'Pro. Staff'},{name:'RAGHVINDER',dept:'Pro. Staff'},
+  {name:'Raj Kumar Tripathi',dept:'Pro. Staff'},{name:'Hemant Tiwari',dept:'Pro. Staff'},
+  {name:'Bablu',dept:'Pro. Staff'},{name:'SONU',dept:'Pro. Staff'},
+  {name:'Shilanath Ray',dept:'Pro. Staff'},{name:'Ashok',dept:'Pro. Staff'},
+  {name:'Rohit',dept:'Pro. Staff'},{name:'jitender',dept:'Pro. Staff'},
+  {name:'Anand',dept:'Pro. Staff'},{name:'PAWAN',dept:'Pro. Staff'},
+  {name:'KULDEEP',dept:'Pro. Staff'},{name:'BIRENDER',dept:'Pro. Staff'},
+  {name:'SAHIB SINGH',dept:'Pro. Staff'},{name:'Manjeet',dept:'Office Staff'},
+  {name:'RAHUL KUMAR JHA',dept:'Office Staff'},{name:'YASH',dept:'Office Staff'},
+  {name:'DEBANJAN',dept:'Office Staff'},{name:'ADARSH BABU',dept:'Office Staff'},
+  {name:'RAJA KUSHWAHA',dept:'Office Staff'},{name:'ANANAYA SAXENA',dept:'Office Staff'},
+  {name:'Avantika Oli',dept:'Own'},
+  {name:'RUPESH',dept:'Pro. Staff'},{name:'Babu Kumar',dept:'Pro. Staff'},
+  {name:'Krishna Kumar',dept:'Pro. Staff'},{name:'Adita Kumar',dept:'Pro. Staff'},
 ];
+// Keep name-only array for backward compat with fuzzy match etc.
+const DEFAULT_EMPLOYEES = DEFAULT_EMPLOYEES_OBJ.map(e => e.name);
 
 function loadStoredConfig() {
   try {
@@ -2830,7 +3013,12 @@ function loadStoredConfig() {
     const cfg = JSON.parse(raw);
     
     if (cfg.pins) CONFIG.PINS = cfg.pins;
-    if (cfg.employees) CONFIG.EMPLOYEES = cfg.employees;
+    if (cfg.employeesObj) {
+      CONFIG.EMPLOYEES = cfg.employeesObj.map(e => e.name);
+      cfg.employeesObj.forEach(e => { DEPT_MAP[e.name] = e.dept; DEPT_MAP[e.name.toUpperCase()] = e.dept; });
+    } else if (cfg.employees) {
+      CONFIG.EMPLOYEES = cfg.employees;
+    }
   } catch {}
 }
 
@@ -2970,7 +3158,7 @@ function populateSettings() {
     const el = id => document.getElementById(id);
     if(el('cfg-webAppUrl')) el('cfg-webAppUrl').value = cfg.webAppUrl||CONFIG.WEB_APP_URL||'';
     if(el('cfg-apiKey'))    el('cfg-apiKey').value    = cfg.apiKey?'••••••••••••':'';
-    if(el('cfg-employees')) el('cfg-employees').value = (cfg.employees||DEFAULT_EMPLOYEES).join('\n');
+    renderEmployeeTable(); // render employee table with dept dropdowns
     if(el('cfg-pinFinance')) el('cfg-pinFinance').value='';
     if(el('cfg-pinAdmin'))   el('cfg-pinAdmin').value='';
     const pb=el('savePinBtn'); if(pb) pb.disabled=currentRole!=='superadmin';
@@ -2991,10 +3179,9 @@ function saveSettings() {
 }
 
 function saveEmployees() {
-  const emps = document.getElementById('cfg-employees').value.split('\n').map(e=>e.trim()).filter(Boolean);
-  CONFIG.EMPLOYEES = emps;
-  saveStoredConfig({ employees:emps });
-  toast('Saved '+emps.length+' employees ✓','ok');
+  const emps = getEmployeeObjects();
+  saveEmployeeObjects(emps);
+  toast('Saved ' + emps.length + ' employees ✓', 'ok');
 }
 
 function savePins() {
