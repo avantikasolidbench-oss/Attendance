@@ -1615,8 +1615,10 @@ function renderReview() {
   }
   // Summary column headers
   const SUM_COLS = ['T.P','W/S','SUN','T.H','T.L','T.A','T.W.Day','T.Day','OT Time'];
-  SUM_COLS.forEach(s => {
-    html += '<th style="min-width:48px;background:#eaf4fb;color:var(--blue)">' + s + '</th>';
+  SUM_COLS.forEach((s,si) => {
+    html += '<th style="min-width:46px;background:#daeaf7;color:#1a5a9e;font-size:9px;' +
+      'position:sticky;right:' + ((SUM_COLS.length-1-si)*46) + 'px;z-index:5;' +
+      'box-shadow:' + (si===0?'-2px 0 4px rgba(0,0,0,.08)':'none') + '">' + s + '</th>';
   });
   html += '</tr></thead><tbody>';
 
@@ -1758,13 +1760,16 @@ function renderReview() {
         sumVals.forEach((v, si) => {
           const isOT = (si === 8);
           const isEmpty = !isOT && (v === 0);
-          html += '<td style="text-align:center;font-size:11px;font-weight:700;background:#eaf4fb;' +
+          html += '<td style="text-align:center;font-size:11px;font-weight:700;background:#daeaf7;' +
             'color:' + (isOT && v!=='—' ? '#1a5a9e' : isEmpty ? '#ccc' : '#222') +
-            ';padding:3px 6px;border:1px solid #d5e8f0;white-space:nowrap">' +
+            ';padding:3px 6px;border:1px solid #c5dcef;white-space:nowrap;' +
+            'position:sticky;right:' + ((sumVals.length-1-si)*46) + 'px;' +
+            'box-shadow:' + (si===0?'-2px 0 4px rgba(0,0,0,.06)':'none') + '">' +
             (isEmpty ? '—' : v) + '</td>';
         });
       } else {
-        sumVals.forEach(() => { html += '<td style="background:#eaf4fb;border:1px solid #d5e8f0"></td>'; });
+        sumVals.forEach((v,si) => { html += '<td style="background:#daeaf7;border:1px solid #c5dcef;' +
+          'position:sticky;right:' + ((sumVals.length-1-si)*46) + 'px"></td>'; });
       }
       html += '</tr>';
     });
@@ -2367,138 +2372,142 @@ function renderEmployeeTable() {
 // ════════════════════════════════════════════════════════
 // REVIEW GRID KEYBOARD NAVIGATION
 // ════════════════════════════════════════════════════════
-let rvFocusRow = -1, rvFocusCol = -1;
-
 function initGridKeyboard() {
   const wrap = document.getElementById('rvGridWrap');
-  if (!wrap) return;
-  wrap.addEventListener('keydown', handleGridKey);
-  // Focus a cell when clicking
-  wrap.addEventListener('click', e => {
-    const cell = e.target.closest('.rv-cell');
-    if (cell) {
-      const tr = cell.closest('tr');
-      const table = cell.closest('table');
-      if (!tr || !table) return;
-      const rows = Array.from(table.querySelectorAll('tbody tr:not([style*="height:3px"])'));
-      rvFocusRow = rows.indexOf(tr);
-      const cells = Array.from(tr.querySelectorAll('.rv-cell'));
-      rvFocusCol = cells.indexOf(cell);
+  if (!wrap || wrap._keyboardBound) return;
+  wrap._keyboardBound = true;
+
+  wrap.addEventListener('focusin', e => {
+    // Track which cell just got focus
+    const input = e.target.closest('input');
+    if (!input) return;
+    const cell = input.closest('.rv-cell');
+    const tr   = input.closest('tr');
+    if (!cell || !tr) return;
+    const table = document.getElementById('rvGrid');
+    const allRows = Array.from(table.querySelectorAll('tbody tr'));
+    const dataRows = allRows.filter(r => !r.querySelector('td[colspan]')); // skip separators
+    const rowIdx = dataRows.indexOf(tr);
+    const cellInputs = Array.from(tr.querySelectorAll('.rv-cell input'));
+    const colIdx = cellInputs.indexOf(input);
+    input._rvRow = rowIdx;
+    input._rvCol = colIdx;
+  });
+
+  wrap.addEventListener('keydown', e => {
+    const active = document.activeElement;
+    const isInput = active && active.tagName === 'INPUT' && active.closest('#rvGridWrap');
+    if (!isInput && e.target !== wrap) return;
+
+    const table = document.getElementById('rvGrid');
+    if (!table) return;
+    const allRows = Array.from(table.querySelectorAll('tbody tr'));
+    const dataRows = allRows.filter(r => !r.querySelector('td[colspan]'));
+    // Only IN and OUT rows are navigable (have editable inputs)
+    const editableRows = dataRows.filter(r => {
+      const lbl = r.querySelector('.rv-row-lbl');
+      return lbl && (lbl.textContent.trim() === 'IN' || lbl.textContent.trim() === 'OUT');
+    });
+
+    const key = e.key;
+
+    // ── TAB: move right through cells, wrap to next row ──
+    if (key === 'Tab') {
+      e.preventDefault();
+      if (!isInput) { focusFirstCell(editableRows); return; }
+      const rowIdx = active._rvRow ?? 0;
+      const colIdx = active._rvCol ?? 0;
+      const tr = active.closest('tr');
+      const inputs = tr ? Array.from(tr.querySelectorAll('.rv-cell input:not([readonly])')) : [];
+      const cur = inputs.indexOf(active);
+      if (!e.shiftKey) {
+        if (cur < inputs.length - 1) { focusInput(inputs[cur+1]); }
+        else { moveVertical(active, editableRows, 1); }
+      } else {
+        if (cur > 0) { focusInput(inputs[cur-1]); }
+        else { moveVertical(active, editableRows, -1, true); }
+      }
+      return;
+    }
+
+    // ── ENTER: move down to same column next row ──
+    if (key === 'Enter' && isInput) {
+      e.preventDefault();
+      moveVertical(active, editableRows, 1);
+      return;
+    }
+
+    // ── ARROW KEYS ──
+    if (key === 'ArrowDown' || key === 'ArrowUp') {
+      e.preventDefault();
+      if (!isInput) { focusFirstCell(editableRows); return; }
+      moveVertical(active, editableRows, key === 'ArrowDown' ? 1 : -1);
+      return;
+    }
+
+    if (key === 'ArrowRight' || key === 'ArrowLeft') {
+      e.preventDefault();
+      if (!isInput) { focusFirstCell(editableRows); return; }
+      const tr = active.closest('tr');
+      const inputs = tr ? Array.from(tr.querySelectorAll('.rv-cell input:not([readonly])')) : [];
+      const cur = inputs.indexOf(active);
+      const next = key === 'ArrowRight' ? inputs[cur+1] : inputs[cur-1];
+      if (next) { focusInput(next); }
+      return;
+    }
+
+    // ── ESCAPE: blur input ──
+    if (key === 'Escape' && isInput) {
+      active.blur();
+      wrap.focus();
     }
   });
 }
 
-function handleGridKey(e) {
-  const wrap = document.getElementById('rvGridWrap');
-  const table = document.getElementById('rvGrid');
-  if (!table) return;
-
-  const rows = Array.from(table.querySelectorAll('tbody tr:not([style*="height:3px"])'));
-  if (!rows.length) return;
-
-  // Find currently focused input
-  const activeEl = document.activeElement;
-  const activeCell = activeEl && activeEl.tagName === 'INPUT' ? activeEl.closest('.rv-cell') : null;
-
-  if (activeCell) {
-    const tr = activeCell.closest('tr');
-    const cells = Array.from(tr.querySelectorAll('.rv-cell'));
-    rvFocusRow = rows.indexOf(tr);
-    rvFocusCol = cells.indexOf(activeCell);
-  }
-
-  const key = e.key;
-
-  // Tab / Shift+Tab — move across cells in same row
-  if (key === 'Tab') {
-    e.preventDefault();
-    const tr = rows[rvFocusRow];
-    if (!tr) return;
-    const cells = Array.from(tr.querySelectorAll('.rv-cell input:not([readonly])'));
-    const curIdx = cells.findIndex(c => c === activeEl);
-    const next = e.shiftKey ? cells[curIdx - 1] : cells[curIdx + 1];
-    if (next) { next.focus(); next.select(); }
-    else {
-      // Move to next/prev row
-      moveToRow(e.shiftKey ? -1 : 1, rows, rvFocusCol);
-    }
-    return;
-  }
-
-  // Arrow keys — navigate grid
-  if (['ArrowRight','ArrowLeft','ArrowDown','ArrowUp'].includes(key)) {
-    const inInput = activeEl && activeEl.tagName === 'INPUT';
-    e.preventDefault();
-    if (rvFocusRow < 0) rvFocusRow = 0;
-
-    if (key === 'ArrowDown')  { moveToRow(1, rows, rvFocusCol); return; }
-    if (key === 'ArrowUp')    { moveToRow(-1, rows, rvFocusCol); return; }
-    // Left/Right: move between cells (blur input first if needed)
-    if (key === 'ArrowRight') { if (inInput) activeEl.blur(); moveToCol(1, rows); return; }
-    if (key === 'ArrowLeft')  { if (inInput) activeEl.blur(); moveToCol(-1, rows); return; }
-    return;
-  }
-
-  // Enter — move down
-  if (key === 'Enter' && activeEl && activeEl.tagName === 'INPUT') {
-    e.preventDefault();
-    moveToRow(1, rows, rvFocusCol);
-    return;
-  }
-
-  // Escape — blur current input
-  if (key === 'Escape' && activeEl && activeEl.tagName === 'INPUT') {
-    activeEl.blur();
-    wrap.focus();
-    return;
-  }
+function focusInput(input) {
+  if (!input) return;
+  input.focus();
+  input.select();
+  scrollCellIntoView(input);
 }
 
-function moveToRow(dir, rows, colIdx) {
-  let nextRow = rvFocusRow + dir;
-  // Skip separator rows and non-editable rows (OT, STS)
-  while (nextRow >= 0 && nextRow < rows.length) {
-    const tr = rows[nextRow];
-    const label = tr.querySelector('.rv-row-lbl');
-    const labelText = label ? label.textContent.trim() : '';
-    if (labelText === 'IN' || labelText === 'OUT') {
-      const inputs = tr.querySelectorAll('.rv-cell input:not([readonly])');
-      const target = inputs[Math.min(colIdx, inputs.length-1)] || inputs[0];
-      if (target) {
-        rvFocusRow = nextRow;
-        target.focus(); target.select();
-        scrollIntoViewIfNeeded(target);
-        return;
-      }
-    }
-    nextRow += dir;
-  }
+function focusFirstCell(editableRows) {
+  if (!editableRows.length) return;
+  const first = editableRows[0].querySelector('.rv-cell input:not([readonly])');
+  if (first) focusInput(first);
 }
 
-function moveToCol(dir, rows) {
-  const tr = rows[rvFocusRow];
-  if (!tr) return;
+function moveVertical(activeInput, editableRows, dir, goToLast) {
+  const tr = activeInput.closest('tr');
+  const curRowIdx = editableRows.indexOf(tr);
   const inputs = Array.from(tr.querySelectorAll('.rv-cell input:not([readonly])'));
-  const curIdx = inputs.findIndex(i => i === document.activeElement);
-  const nextIdx = curIdx + dir;
-  if (nextIdx >= 0 && nextIdx < inputs.length) {
-    rvFocusCol = nextIdx;
-    inputs[nextIdx].focus(); inputs[nextIdx].select();
-    scrollIntoViewIfNeeded(inputs[nextIdx]);
+  const curColIdx = inputs.indexOf(activeInput);
+
+  // Find next editable row in direction
+  let nextRowIdx = curRowIdx + dir;
+  while (nextRowIdx >= 0 && nextRowIdx < editableRows.length) {
+    const nextRow = editableRows[nextRowIdx];
+    const nextInputs = Array.from(nextRow.querySelectorAll('.rv-cell input:not([readonly])'));
+    if (nextInputs.length > 0) {
+      const targetIdx = goToLast ? nextInputs.length - 1 : Math.min(curColIdx, nextInputs.length - 1);
+      focusInput(nextInputs[targetIdx]);
+      return;
+    }
+    nextRowIdx += dir;
   }
 }
 
-function scrollIntoViewIfNeeded(el) {
+function scrollCellIntoView(el) {
   const wrap = document.getElementById('rvGridWrap');
   if (!wrap || !el) return;
-  const wrapRect = wrap.getBoundingClientRect();
-  const elRect = el.getBoundingClientRect();
-  // Horizontal scroll
-  if (elRect.right > wrapRect.right - 20) wrap.scrollLeft += elRect.right - wrapRect.right + 60;
-  if (elRect.left < wrapRect.left + 162) wrap.scrollLeft -= wrapRect.left + 162 - elRect.left + 20;
-  // Vertical scroll
-  if (elRect.bottom > wrapRect.bottom - 10) wrap.scrollTop += elRect.bottom - wrapRect.bottom + 30;
-  if (elRect.top < wrapRect.top + 30) wrap.scrollTop -= wrapRect.top + 30 - elRect.top;
+  const wRect = wrap.getBoundingClientRect();
+  const eRect = el.getBoundingClientRect();
+  const FROZEN_LEFT = 165; // emp name + label col width
+  const FROZEN_TOP  = 32;  // header height
+  if (eRect.right  > wRect.right  - 10) wrap.scrollLeft += eRect.right  - wRect.right  + 60;
+  if (eRect.left   < wRect.left   + FROZEN_LEFT) wrap.scrollLeft -= wRect.left + FROZEN_LEFT - eRect.left + 10;
+  if (eRect.bottom > wRect.bottom - 10) wrap.scrollTop  += eRect.bottom - wRect.bottom + 30;
+  if (eRect.top    < wRect.top    + FROZEN_TOP)  wrap.scrollTop  -= wRect.top  + FROZEN_TOP  - eRect.top  + 10;
 }
 
 // ════════════════════════════════════════════════════════
