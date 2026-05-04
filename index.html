@@ -207,6 +207,50 @@ select:focus{border-color:var(--accent)}
 .test-result.err{background:rgba(192,57,43,.08);color:var(--danger);border:1px solid rgba(192,57,43,.2);display:block}
 
 
+
+/* ─── REVIEW GRID ─── */
+.rv-grid-wrap{overflow:auto;border:1px solid var(--border);border-radius:var(--r);background:var(--surface)}
+.rv-table{border-collapse:collapse;font-size:11px;font-family:"DM Mono",monospace}
+.rv-table th{background:var(--surface2);padding:5px 7px;text-align:center;font-size:9px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.4px;color:var(--muted);border:1px solid var(--border);
+  white-space:nowrap;position:sticky;top:0;z-index:5}
+.rv-table th.emp-col{left:0;z-index:6;min-width:130px;text-align:left;padding-left:10px}
+.rv-table th.sun{color:var(--danger)}
+.rv-table td{border:1px solid var(--border);padding:0;vertical-align:middle;text-align:center}
+.rv-table td.emp-name{position:sticky;left:0;background:var(--surface);z-index:2;
+  padding:4px 10px;text-align:left;font-family:"Nunito",sans-serif;font-weight:700;
+  font-size:11px;white-space:nowrap;min-width:130px;border-right:2px solid var(--border)}
+.rv-table tr:hover td.emp-name{background:#f9f7f4}
+
+/* Row type labels */
+.rv-row-lbl{writing-mode:horizontal-tb;font-size:9px;font-weight:700;color:var(--muted);
+  padding:2px 5px;background:var(--surface2);white-space:nowrap;width:32px;
+  position:sticky;left:130px;z-index:2;border-right:1px solid var(--border)}
+
+/* Cell colours */
+.rv-cell{min-width:54px;max-width:54px;height:22px;padding:0}
+.rv-cell input{width:100%;height:100%;border:none;background:transparent;text-align:center;
+  font-family:"DM Mono",monospace;font-size:10px;color:var(--text);outline:none;padding:0 2px;cursor:pointer}
+.rv-cell input:focus{background:rgba(192,82,26,.12);cursor:text}
+.rv-cell.absent{background:#fde8e3}
+.rv-cell.late{background:#fff3cd}
+.rv-cell.ot{background:#e8f4fd}
+.rv-cell.present{background:#f0faf4}
+.rv-cell.sun{background:#fff9e6}
+.rv-cell.holiday{background:#e8f0e8}
+.rv-cell.low-conf{outline:2px solid var(--danger);outline-offset:-2px}
+.rv-cell.empty{background:var(--surface2)}
+.rv-cell.sts-p{background:#e8f5e9;font-weight:700;color:var(--green)}
+.rv-cell.sts-a{background:#fde8e3;font-weight:700;color:var(--danger)}
+.rv-cell.sts-ws{background:#e3f2fd;font-weight:700;color:var(--blue)}
+.rv-cell.sts-sun{background:#fff9e6;color:#9a5800}
+.rv-cell.sts-h{background:#e8f0e8;font-weight:700;color:var(--green)}
+.rv-cell.sts-l{background:#f3e5f5;font-weight:700;color:#7b1fa2}
+
+/* Legend */
+.rv-legend{display:flex;gap:12px;flex-wrap:wrap;font-size:10px;color:var(--muted);margin-top:8px;align-items:center}
+.rv-legend-dot{width:12px;height:12px;border-radius:2px;display:inline-block;margin-right:3px;vertical-align:middle}
+
 /* ─── GATE PASS ─── */
 .gp-form{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
 @media(max-width:560px){.gp-form{grid-template-columns:1fr}}
@@ -386,23 +430,37 @@ select:focus{border-color:var(--accent)}
         <button class="btn btn-green" onclick="finaliseAndSave()">✓ Approve &amp; Save to Sheets</button>
       </div>
     </div>
-    <div class="table-wrap">
-      <div class="table-scroll">
-        <table>
-          <thead><tr>
-            <th>#</th><th>Employee</th><th>Date</th>
-            <th>IN</th><th>OUT</th><th>Hours</th>
-            <th>Status</th><th>Note / Flag</th><th>Conf</th>
-          </tr></thead>
-          <tbody id="reviewBody"></tbody>
-        </table>
+    <!-- Grid view -->
+    <div class="rv-grid-wrap" id="rvGridWrap">
+      <table class="rv-table" id="rvGrid"></table>
+    </div>
+
+    <!-- Unclear photo reupload panel -->
+    <div id="reuploadPanel" style="display:none;margin-top:16px">
+      <div class="card" style="border-color:rgba(154,88,0,.3)">
+        <div style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;margin-bottom:8px">📷 Replace Unclear Photos</div>
+        <div id="unclearPhotoList" style="margin-bottom:12px"></div>
+        <div id="reuploadZone" style="border:2px dashed var(--warn);border-radius:var(--rr);padding:16px;text-align:center;cursor:pointer;font-size:12px;color:var(--warn);font-weight:700"
+          onclick="document.getElementById('reuploadInput').click()">
+          Drop replacement photo here or click to browse
+        </div>
+        <input type="file" id="reuploadInput" accept="image/*" style="display:none" onchange="handleReupload(this.files)">
+        <div id="reuploadProgress" style="display:none;margin-top:10px">
+          <div class="prog-label-row"><div class="spinner"></div><span id="reuploadLabel">Re-extracting…</span></div>
+          <div class="prog-track"><div class="prog-fill" id="reuploadFill" style="width:0%"></div></div>
+        </div>
       </div>
     </div>
-    <div style="display:flex;gap:14px;font-size:10px;color:var(--muted);margin-top:8px">
-      <span><span class="conf-bar conf-hi"></span>High (&gt;90%)</span>
-      <span><span class="conf-bar conf-md"></span>Medium (70–90%)</span>
-      <span><span class="conf-bar conf-lo"></span>Low (&lt;70%)</span>
-      <span>📝 Notes are saved to Analytics for pattern tracking</span>
+
+    <div class="rv-legend">
+      <span><span class="rv-legend-dot" style="background:#f0faf4;border:1px solid #ccc"></span>Present</span>
+      <span><span class="rv-legend-dot" style="background:#fde8e3;border:1px solid #ccc"></span>Absent</span>
+      <span><span class="rv-legend-dot" style="background:#fff3cd;border:1px solid #ccc"></span>Late</span>
+      <span><span class="rv-legend-dot" style="background:#e8f4fd;border:1px solid #ccc"></span>Overtime</span>
+      <span><span class="rv-legend-dot" style="background:#fff9e6;border:1px solid #ccc"></span>Sunday</span>
+      <span><span class="rv-legend-dot" style="background:#e8f0e8;border:1px solid #ccc"></span>Holiday</span>
+      <span><span class="rv-legend-dot" style="background:transparent;border:2px solid var(--danger)"></span>Low confidence — check</span>
+      <span style="margin-left:auto;font-size:10px;color:var(--muted)">Click any IN/OUT cell to edit inline</span>
     </div>
   </div>
 </div>
@@ -962,7 +1020,12 @@ function showPage(page) {
     });
   });
   if (page === 'settings') { setTimeout(populateSettings, 50); return; }
-  if (page === 'gatepass') { setTimeout(initGatePassPage, 50); return; }
+  if (page === 'gatepass') {
+    const gs = document.getElementById('gatepassScreen');
+    if (gs) { gs.scrollTop = 0; const m = gs.querySelector('.main'); if(m) m.scrollTop=0; }
+    setTimeout(initGatePassPage, 50);
+    return;
+  }
   if (page === 'analytics') { setTimeout(() => { loadAndRenderAnalytics(); }, 50); }
   if (page === 'review') renderReview();
   if (page === 'upload') loadHistory();
@@ -1397,45 +1460,190 @@ function loadReviewDraft() {
 let rvFilterMode = 'all';
 
 function renderReview() {
-  const data = rvFilterMode === 'low' ? reviewRecords.filter(r => r.conf < 70)
-    : rvFilterMode === 'flag' ? reviewRecords.filter(r => r.late || r.note)
-    : reviewRecords;
+  const MONTH_NUMS = ['January','February','March','April','May','June',
+    'July','August','September','October','November','December'];
+  const DAY_NAMES = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
+  const grid = document.getElementById('rvGrid');
+  if (!grid) return;
+
+  // Update stats
   document.getElementById('rvTotal').textContent = reviewRecords.length;
   document.getElementById('rvLow').textContent = reviewRecords.filter(r => r.conf < 70).length;
   document.getElementById('rvFlagged').textContent = reviewRecords.filter(r => r.late || r.note).length;
 
-  const body = document.getElementById('reviewBody');
   if (!reviewRecords.length) {
-    body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:28px;color:var(--muted)">No records loaded. Upload a register or click Review on a month.</td></tr>';
+    grid.innerHTML = '<tr><td style="padding:40px;text-align:center;color:var(--muted);font-family:Nunito">No records loaded. Upload a register or click Review on a month.</td></tr>';
     return;
   }
 
-  body.innerHTML = data.map(r => {
-    const confCls = r.conf >= 90 ? 'conf-hi' : r.conf >= 70 ? 'conf-md' : 'conf-lo';
-    const rowCls = r.conf < 70 ? ' class="low-row"' : '';
-    const statusBadge = r.status === 'Absent' ? 'b-err' : r.status === 'Overtime' ? 'b-warn' : r.status === 'Late' ? 'b-warn' : 'b-ok';
-    const lateCheck = '<input type="checkbox" ' + (r.late ? 'checked' : '') + ' onchange="toggleLate(' + r.id + ',this.checked)" title="Mark as late arrival" style="cursor:pointer;accent-color:var(--danger)">';
-    return '<tr' + rowCls + '>' +
-      '<td class="mono">' + r.id + '</td>' +
-      '<td><b>' + r.emp + '</b></td>' +
-      '<td class="mono">' + r.date + '</td>' +
-      '<td><input class="editable" value="' + r.inTime + '" onchange="updateRec(' + r.id + ',\'inTime\',this.value)"></td>' +
-      '<td><input class="editable" value="' + r.outTime + '" onchange="updateRec(' + r.id + ',\'outTime\',this.value)"></td>' +
-      '<td class="mono">' + r.hours + '</td>' +
-      '<td><span class="badge ' + statusBadge + '">' + r.status + '</span></td>' +
-      '<td style="display:flex;align-items:center;gap:6px">' + lateCheck +
-        '<input class="note-input" placeholder="Add note…" value="' + (r.note||'') + '" onchange="updateRec(' + r.id + ',\'note\',this.value)"></td>' +
-      '<td>' +
-        '<span class="conf-bar ' + confCls + '"></span>' + r.conf + '%' +
-        (r.conf < 70 && r.sourceFile ? '<br><span style="font-size:9px;color:var(--warn);cursor:pointer" onclick="selectPhotoToReplace(\'' + r.sourceFile + '\')" title="Click to replace this photo">📷 ' + r.sourceFile.slice(0,15) + (r.sourceFile.length>15?'…':'') + '</span>' : '') +
-      '</td>' +
-      '</tr>';
-  }).join('');
+  // Parse month/year
+  const label = document.getElementById('reviewMonthLabel').textContent;
+  const parts = label.split(' ');
+  const monthName = parts[0], year = +parts[1];
+  const monthIdx = MONTH_NUMS.indexOf(monthName);
+  const daysInMonth = (monthIdx >= 0 && year) ? new Date(year, monthIdx+1, 0).getDate() : 31;
+  const holidays = getHolidaysForMonth(monthName, year);
+  const holidaySet = new Set(holidays);
 
-  // Auto-save draft on any render
+  function dow(d) {
+    if (monthIdx < 0 || !year) return '';
+    const day = new Date(year, monthIdx, d).getDay();
+    return day === 0 ? 'Sun' : DAY_NAMES[day-1];
+  }
+
+  // Group records by employee → day
+  const empSet = [], empDayMap = {};
+  reviewRecords.forEach(r => {
+    if (!empSet.includes(r.emp)) empSet.push(r.emp);
+    let d;
+    try { const dt = new Date(r.date); d = isNaN(dt.getDate()) ? parseInt(r.date) : dt.getDate(); } catch { return; }
+    if (!d || d < 1 || d > 31) return;
+    const key = r.emp + '|' + d;
+    if (!empDayMap[key]) empDayMap[key] = [];
+    empDayMap[key].push(r);
+  });
+
+  // Apply filter
+  let filteredEmps = empSet;
+  if (rvFilterMode === 'low')     filteredEmps = empSet.filter(e => reviewRecords.some(r => r.emp===e && r.conf < 70));
+  else if (rvFilterMode === 'flag') filteredEmps = empSet.filter(e => reviewRecords.some(r => r.emp===e && (r.late||r.note)));
+  else if (rvFilterMode === 'unclear') filteredEmps = empSet.filter(e => reviewRecords.some(r => r.emp===e && r.conf < 70 && r.sourceFile));
+
+  // Build header row
+  let html = '<thead><tr>';
+  html += '<th class="emp-col">Employee</th>';
+  html += '<th style="left:130px;position:sticky;z-index:6;background:var(--surface2);min-width:32px"></th>'; // row label col
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dn = dow(d);
+    const isSun = dn === 'Sun';
+    const isHol = holidaySet.has(d);
+    const style = isSun ? ' class="sun"' : isHol ? ' style="color:var(--green)"' : '';
+    html += '<th' + style + '>' + d + '<br><span style="font-weight:400;font-size:8px">' + dn + '</span></th>';
+  }
+  html += '</tr></thead><tbody>';
+
+  // Build employee rows — 4 rows each (IN, OUT, OT, STS)
+  filteredEmps.forEach((emp, ei) => {
+    const rowTypes = ['IN','OUT','OT','STS'];
+    rowTypes.forEach((type, ti) => {
+      html += '<tr>';
+
+      // Employee name cell (only on IN row, spans 4)
+      if (ti === 0) {
+        html += '<td class="emp-name" rowspan="4">';
+        // Low conf indicator
+        const hasLow = reviewRecords.some(r => r.emp===emp && r.conf < 70);
+        const hasUnknown = reviewRecords.some(r => r.emp===emp && r.unknownEmp);
+        if (hasUnknown) html += '<span style="color:var(--warn);font-size:9px">⚠ </span>';
+        else if (hasLow) html += '<span style="color:var(--danger);font-size:9px">● </span>';
+        html += emp + '</td>';
+      }
+
+      // Row label
+      const lblColor = type==='IN'?'#1d7a48':type==='OUT'?'#1a5a9e':type==='OT'?'#9a5800':'#555';
+      html += '<td class="rv-row-lbl" style="color:' + lblColor + '">' + type + '</td>';
+
+      // Day cells
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dn = dow(d);
+        const isSun = dn === 'Sun';
+        const isHol = holidaySet.has(d);
+        const recs = empDayMap[emp + '|' + d] || [];
+        const rec = recs[0]; // take first record for this day
+
+        let cellVal = '', cellClass = 'rv-cell', isLowConf = false;
+
+        if (isSun && !rec) { cellVal = 'Sun'; cellClass += ' sun'; }
+        else if (isHol) { cellVal = 'H'; cellClass += ' holiday'; }
+        else if (!rec) { cellClass += ' empty'; }
+        else {
+          isLowConf = rec.conf < 70;
+          if (isLowConf) cellClass += ' low-conf';
+
+          if (type === 'IN') {
+            cellVal = rec.inTime || (rec.status==='Absent'?'A':'');
+            if (rec.status==='Absent') cellClass += ' absent';
+            else if (rec.late) cellClass += ' late';
+            else if (isSun) cellClass += ' sun';
+            else cellClass += ' present';
+          } else if (type === 'OUT') {
+            cellVal = rec.outTime || (rec.status==='Absent'?'A':'');
+            if (rec.status==='Absent') cellClass += ' absent';
+            else if (rec.ot) cellClass += ' ot';
+            else if (isSun) cellClass += ' sun';
+            else cellClass += ' present';
+          } else if (type === 'OT') {
+            // Calculate OT display
+            if (rec.inTime && rec.outTime && rec.status !== 'Absent') {
+              try {
+                const [ih,im]=rec.inTime.split(':').map(Number);
+                const [oh,om]=rec.outTime.split(':').map(Number);
+                const std = isSun ? 0.5 : 8.5;
+                const worked=(oh+om/60)-(ih+im/60);
+                const ot = Math.max(worked-std, 0);
+                cellVal = ot > 0 ? (Math.floor(ot)+'h'+(ot%1>0?Math.round(ot%1*60)+'m':'')) : '—';
+                cellClass += ot > 0 ? ' ot' : ' present';
+              } catch { cellVal='—'; cellClass+=' empty'; }
+            } else {
+              cellVal = '—'; cellClass += ' empty';
+            }
+          } else if (type === 'STS') {
+            if (isSun) { cellVal='W/S'; cellClass+=' sts-ws'; }
+            else if (rec.status==='Absent') { cellVal='A'; cellClass+=' sts-a'; }
+            else if (rec.late) { cellVal='L*'; cellClass+=' sts-l'; }
+            else { cellVal='P'; cellClass+=' sts-p'; }
+          }
+        }
+
+        // Make IN/OUT cells editable, OT/STS read-only
+        if ((type==='IN'||type==='OUT') && rec && rec.status!=='Absent' && !isHol && !isSun) {
+          const field = type==='IN'?'inTime':'outTime';
+          html += '<td class="' + cellClass + '">'
+            + '<input value="' + cellVal + '" placeholder="—"'
+            + ' onfocus="this.select()"'
+            + ' title="Conf: ' + (rec?rec.conf:'') + '%' + (isLowConf?' ⚠ Low confidence':'') + '"'
+            + '></td>';
+        } else {
+          html += '<td class="' + cellClass + '" title="' + (rec&&rec.note?'Note: '+rec.note:'') + '">'
+            + '<span style="font-size:10px;padding:2px 4px">' + cellVal + '</span>'
+            + '</td>';
+        }
+      }
+      html += '</tr>';
+    });
+
+    // Visual separator between employees
+    html += '<tr><td colspan="' + (daysInMonth+2) + '" style="height:3px;background:var(--border);padding:0"></td></tr>';
+  });
+
+  html += '</tbody>';
+  grid.innerHTML = html;
   autoSaveReviewDraft();
 }
+
+// Update record by employee+day (used in grid inline edit)
+
+function updateRecByEmpDayAttr(input) {
+  const emp = input.dataset.emp;
+  const day = +input.dataset.day;
+  const field = input.dataset.field;
+  updateRecByEmpDay(emp, day, field, input.value);
+}
+
+function updateRecByEmpDay(emp, dayNum, field, value) {
+  const recs = reviewRecords.filter(r => {
+    try { const d = new Date(r.date); return r.emp===emp && (isNaN(d.getDate())?parseInt(r.date):d.getDate())===dayNum; } catch { return false; }
+  });
+  recs.forEach(r => {
+    r[field] = value;
+    r.conf = Math.min(r.conf + 15, 99); // confidence goes up when manually edited
+  });
+  autoSaveReviewDraft();
+  // Re-render just that cell area — full re-render is too slow for large grids
+  renderReview();
+}
+
 
 function rvFilter(f) {
   rvFilterMode = f;
@@ -1770,35 +1978,49 @@ function getGPUsed(emp, month, year) {
 
 // ── Init ──
 function initGatePassPage() {
-  // Month/year selects
-  const ms = document.getElementById('gp-month-sel');
-  const ys = document.getElementById('gp-year-sel');
-  if (!ms || !ys) return;
-  ms.innerHTML=''; ys.innerHTML='';
-  const now = new Date();
-  MONTHS.forEach((m,i) => {
-    const o=document.createElement('option'); o.value=i; o.textContent=m;
-    if(i===now.getMonth()) o.selected=true;
-    ms.appendChild(o);
-  });
-  for(let y=now.getFullYear();y>=now.getFullYear()-2;y--){
-    const o=document.createElement('option'); o.value=y; o.textContent=y;
-    if(y===now.getFullYear()) o.selected=true;
-    ys.appendChild(o);
-  }
-  // Employee dropdown
-  const empSel = document.getElementById('gp-emp');
-  empSel.innerHTML='<option value="">— Select —</option>';
-  (CONFIG.EMPLOYEES||DEFAULT_EMPLOYEES).forEach(n=>{
-    const o=document.createElement('option'); o.value=n; o.textContent=n; empSel.appendChild(o);
-  });
-  // Date default
-  const dateEl = document.getElementById('gp-date');
-  if(dateEl) dateEl.valueAsDate = new Date();
+  try {
+    const ms = document.getElementById('gp-month-sel');
+    const ys = document.getElementById('gp-year-sel');
+    if (!ms || !ys) { console.warn('Gate pass selects missing'); return; }
 
-  renderGPEntries();
-  renderGPTotalLabel();
+    const monthNames = ['January','February','March','April','May','June',
+      'July','August','September','October','November','December'];
+    const now = new Date();
+
+    ms.innerHTML='';
+    monthNames.forEach((m,i) => {
+      const o=document.createElement('option');
+      o.value=i; o.textContent=m;
+      if(i===now.getMonth()) o.selected=true;
+      ms.appendChild(o);
+    });
+
+    ys.innerHTML='';
+    for(let y=now.getFullYear();y>=now.getFullYear()-2;y--){
+      const o=document.createElement('option');
+      o.value=y; o.textContent=y;
+      if(y===now.getFullYear()) o.selected=true;
+      ys.appendChild(o);
+    }
+
+    const empSel = document.getElementById('gp-emp');
+    if(empSel) {
+      empSel.innerHTML='<option value="">— Select —</option>';
+      (CONFIG.EMPLOYEES||DEFAULT_EMPLOYEES).forEach(n=>{
+        const o=document.createElement('option'); o.value=n; o.textContent=n; empSel.appendChild(o);
+      });
+    }
+
+    const dateEl = document.getElementById('gp-date');
+    if(dateEl) dateEl.valueAsDate = new Date();
+
+    renderGPEntries();
+    renderGPTotalLabel();
+  } catch(e) {
+    console.error('initGatePassPage error:', e);
+  }
 }
+
 
 function onGPMonthChange() { renderGPEntries(); renderGPTotalLabel(); }
 
@@ -2047,6 +2269,15 @@ function runSmartAllocation() {
 }
 
 // Get GP allocation for a specific employee+date (used in Excel generation)
+function getGPAllocationForEmployee(emp, month, year) {
+  // Returns array of {date, gpUsed} for this employee this month
+  try {
+    const alloc = JSON.parse(localStorage.getItem('sb_gp_allocation_'+month+'_'+year)||'[]');
+    const empAlloc = alloc.find(a => a.emp === emp);
+    return empAlloc ? empAlloc.allocated : [];
+  } catch { return []; }
+}
+
 function getGPAllocation(emp, dateStr, month, year) {
   try {
     const alloc=JSON.parse(localStorage.getItem('sb_gp_allocation_'+month+'_'+year)||'[]');
@@ -2221,8 +2452,9 @@ function generateAttendanceExcel(records, monthName, year, holidays) {
 
   // ── Employee rows ──
   const START_ROW = 3;
+  let currentRow = START_ROW;
   empOrder.forEach((emp,ei) => {
-    const inR=START_ROW+ei*4, outR=inR+1, otR=inR+2, stsR=inR+3;
+    const inR=currentRow, outR=inR+1, otR=inR+2, stsR=inR+3;
     const dept=getDept(emp), office=isOffice(dept), own=isOwn(dept);
     const wt    = office?'09:00':own?'':'08:30';
     const otRef = office?'$A$1':'$A$2';
@@ -2314,6 +2546,28 @@ function generateAttendanceExcel(records, monthName, year, holidays) {
       sc(stsR, col, stsVal);
     }
 
+    // ── GP row — only if employee has gate pass allocation this month ──
+    const gpAlloc = getGPAllocationForEmployee(emp, monthName, year);
+    let gpRowOffset = 0; // 0 = no GP row, 1 = GP row added
+    if (gpAlloc && gpAlloc.length > 0) {
+      const gpRow = stsR + 1;
+      gpRowOffset = 1;
+      sc(gpRow, 4, 'GP');
+      // Write GP hours per day
+      for (let d = 1; d <= daysInMonth; d++) {
+        const col = DAY_COL_START + d - 1;
+        const dayAlloc = gpAlloc.find(a => {
+          try { return new Date(a.date).getDate() === d; } catch { return false; }
+        });
+        if (dayAlloc && dayAlloc.gpUsed > 0) {
+          // Show GP hours as time string e.g. "1:30"
+          const hrs = Math.floor(dayAlloc.gpUsed);
+          const mins = Math.round((dayAlloc.gpUsed - hrs) * 60);
+          sc(gpRow, col, hrs + ':' + String(mins).padStart(2,'0'));
+        }
+      }
+    }
+
     // ── Summary formulas ──
     const stsRange=colLetter(DAY_COL_START)+(stsR+1)+':'+colLetter(LAST_DAY_COL)+(stsR+1);
     const otRange =colLetter(DAY_COL_START)+(otR+1) +':'+colLetter(LAST_DAY_COL)+(otR+1);
@@ -2346,10 +2600,12 @@ function generateAttendanceExcel(records, monthName, year, holidays) {
       const sCL = (i) => colLetter(SUN_LEAVE_START+i);
       sf(inR, SUN_LEAVE_START+3, `${sCL(0)}${inR+1}+${sCL(1)}${inR+1}-${sCL(2)}${inR+1}`);
     }
+    // Advance row counter: 4 rows + 1 if GP row added
+    currentRow += 4 + gpRowOffset;
   });
 
   // ── Sheet ref ──
-  const lastRow = START_ROW + empOrder.length*4;
+  const lastRow = currentRow;
   const lastCol = SUN_LEAVE_START + 3;
   ws['!ref'] = XLSX.utils.encode_range({s:{r:0,c:0},e:{r:lastRow,c:lastCol}});
 
