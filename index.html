@@ -417,6 +417,8 @@ select:focus{border-color:var(--accent)}
       <button class="nav-btn" id="nav3-upload" onclick="showPage('upload')">📤 Upload</button>
       <button class="nav-btn" id="nav3-review" onclick="showPage('review')">🔍 Review</button>
       <button class="nav-btn active" id="nav3-analytics" onclick="showPage('analytics')">📊 Analytics</button>
+      <button class="nav-btn" id="nav3-gatepass" onclick="showPage('gatepass')">🛡 Gate Pass</button>
+      <button class="nav-btn" id="nav3-settings" onclick="showPage('settings')">⚙ Settings</button>
     </div>
     <div class="hdr-right">
       <div class="sheets-status"><span class="sheets-dot" id="sheetsDot3"></span><span id="sheetsStatusText3">Sheets</span></div>
@@ -484,7 +486,8 @@ select:focus{border-color:var(--accent)}
       <button class="nav-btn" id="nav4-upload" onclick="showPage('upload')">📤 Upload</button>
       <button class="nav-btn" id="nav4-review" onclick="showPage('review')">🔍 Review</button>
       <button class="nav-btn" id="nav4-analytics" onclick="showPage('analytics')">📊 Analytics</button>
-      <button class="nav-btn active" id="nav4-settings" onclick="showPage('settings')">⚙ Settings</button>
+      <button class="nav-btn active" id="nav4-gatepass" onclick="showPage('gatepass')">🛡 Gate Pass</button>
+      <button class="nav-btn" id="nav4-settings" onclick="showPage('settings')">⚙ Settings</button>
     </div>
     <div class="hdr-right">
       <span class="role-badge" id="roleLabel4">Finance Manager</span>
@@ -952,7 +955,7 @@ function clearPinErr() { document.getElementById('lockErr').textContent = ''; }
 // NAVIGATION
 // ════════════════════════════════════════════════════════
 function showPage(page) {
-  ['upload','review','analytics','settings'].forEach(p => {
+  ['upload','review','analytics','settings','gatepass'].forEach(p => {
     document.getElementById(p + 'Screen').classList.toggle('active', p === page);
     // Update all nav buttons across screens
     ['','2','3','4','5'].forEach(n => {
