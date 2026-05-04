@@ -582,6 +582,8 @@ let sheetsToken = null;
 let sheetsReady = false;
 let historyData = [];       // loaded from Sheets or localStorage cache
 let reviewRecords = [];     // current OCR draft — localStorage
+let reviewMonth = '';
+let reviewYear = 0;
 let analyticsData = null;   // loaded from _Analytics sheet
 let charts = {};
 
@@ -819,7 +821,7 @@ function showPage(page) {
       if (btn) btn.classList.toggle('active', p === page);
     });
   });
-  if (page === 'settings') { populateSettings(); return; }
+  if (page === 'settings') { setTimeout(populateSettings, 50); return; }
   if (page === 'analytics') { setTimeout(() => { loadAndRenderAnalytics(); }, 50); }
   if (page === 'review') renderReview();
   if (page === 'upload') loadHistory();
@@ -1221,7 +1223,7 @@ function getDraftFromLocalStorage(month, year) {
   try { return JSON.parse(raw).records; } catch { return null; }
 }
 
-function clearDraftFromLocalStorage(month, year) {
+function clearDraft(month, year) {
   localStorage.removeItem('sb_att_draft_' + month + '_' + year);
 }
 
@@ -1416,54 +1418,22 @@ async function finaliseAndSave() {
   if (!label || label === '—') { toast('No month loaded for review', 'err'); return; }
   const parts = label.split(' '); const month = parts[0]; const year = +parts[1];
 
-  if (DEMO_MODE) {
-    toast('Demo mode — would write to Sheets: ' + month + ' ' + year, 'info');
-    simulateFinalise(month, year); return;
+  if (!sheetsReady || !CONFIG.WEB_APP_URL) {
+    toast('Not connected to Google Sheets — check Web App URL in Settings', 'err'); return;
   }
 
-  if (!sheetsReady) { toast('Not connected to Google Sheets', 'err'); return; }
-
   try {
-    const sheetName = monthSheetName(month, year);
-    await ensureSheet(sheetName);
-    await ensureSheet(CONFIG.ANALYTICS_SHEET);
+    toast('Saving to Google Sheets…', 'info');
+    await appsPost({ action: 'saveMonth', month, year, records: reviewRecords });
 
-    // Write month sheet
-    const monthRows = [MONTH_HEADERS, ...reviewRecords.map(r => [
-      r.emp, r.date, r.day, r.inTime, r.outTime, r.hours,
-      r.status, r.late ? 'YES' : 'NO', r.note || '', r.ot ? 'YES' : 'NO'
-    ])];
-    await sheetsClearAndWrite(sheetName, monthRows);
-
-    // Write to _Analytics — one row per employee summary
-    const empMap = {};
-    reviewRecords.forEach(r => {
-      if (!empMap[r.emp]) empMap[r.emp] = { present: 0, total: 0, hours: [], late: 0, ot: 0, sundays: 0, notes: [] };
-      empMap[r.emp].total++;
-      if (r.status !== 'Absent') { empMap[r.emp].present++; empMap[r.emp].hours.push(parseFloat(r.hours) || 0); }
-      if (r.late) empMap[r.emp].late++;
-      if (r.ot) empMap[r.emp].ot++;
-      if (r.day === 'Sun') empMap[r.emp].sundays++;
-      if (r.note) empMap[r.emp].notes.push(r.note);
-    });
-
-    const analyticsRows = Object.entries(empMap).map(([name, d]) => {
-      const attRate = d.total > 0 ? Math.round((d.present / d.total) * 100 * 10) / 10 : 0;
-      const avgHours = d.hours.length > 0 ? Math.round((d.hours.reduce((a,b) => a+b, 0) / d.hours.length) * 10) / 10 : 0;
-      return [name, month, year, attRate, avgHours, d.late, d.ot, d.sundays, d.notes.join('; ')];
-    });
-
-    // Remove existing rows for this month/year from _Analytics, then append
-    await sheetsAppend(CONFIG.ANALYTICS_SHEET, analyticsRows.length ? analyticsRows : [['']]);
-
-    // Update local history
+    // Update local state
     const h = historyData.find(x => x.month === month && x.year === year);
     if (h) { h.status = 'closed'; h.flagged = reviewRecords.filter(r => r.late).length; }
-    else historyData.unshift({ month, year, records: reviewRecords.length, flagged: reviewRecords.filter(r => r.late).length, status: 'closed', uploaded: new Date().toLocaleDateString(), photos: '—' });
+    else historyData.unshift({ month, year, records: reviewRecords.length, flagged: reviewRecords.filter(r => r.late).length, status: 'closed', uploaded: new Date().toLocaleDateString() });
 
-    clearDraftFromLocalStorage(month, year);
+    clearDraft(month, year);
     renderHistory();
-    toast('Saved to Sheets: ' + sheetName + ' + _Analytics ✓', 'ok');
+    toast('Saved to Sheets ✓', 'ok');
     showPage('upload');
   } catch(e) {
     toast('Save failed: ' + e.message, 'err');
@@ -1474,7 +1444,7 @@ function simulateFinalise(month, year) {
   const h = historyData.find(x => x.month === month && x.year === year);
   if (h) { h.status = 'closed'; h.flagged = reviewRecords.filter(r => r.late).length; }
   else historyData.unshift({ month, year, records: reviewRecords.length, flagged: reviewRecords.filter(r => r.late).length, status: 'closed', uploaded: new Date().toLocaleDateString(), photos: '—' });
-  clearDraftFromLocalStorage(month, year);
+  clearDraft(month, year);
   renderHistory();
   setTimeout(() => showPage('upload'), 1000);
 }
@@ -1636,10 +1606,16 @@ function downloadExcelFromDraft() {
 }
 
 function generateAttendanceExcel(records, monthName, year) {
-  if (typeof XLSX === 'undefined') { toast('SheetJS not loaded', 'err'); return; }
+  if (typeof XLSX === 'undefined') { toast('SheetJS not loaded — check internet connection', 'err'); return; }
+  if (!records || !records.length) { toast('No records to export', 'err'); return; }
   const MONTH_NUMS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  // Fallback: derive month/year from records if not passed
+  if (!monthName || monthName === '') {
+    try { const d = new Date(records[0].date); monthName = MONTH_NUMS[d.getMonth()]; year = d.getFullYear(); } catch {}
+  }
+  if (!year || year === 0) { year = new Date().getFullYear(); }
   const monthIdx = MONTH_NUMS.indexOf(monthName);
-  if (monthIdx === -1) { toast('Invalid month', 'err'); return; }
+  if (monthIdx === -1) { toast('Could not determine month — check records', 'err'); return; }
   const daysInMonth = new Date(year, monthIdx + 1, 0).getDate();
   const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
   const empOrder = [];
@@ -1648,7 +1624,12 @@ function generateAttendanceExcel(records, monthName, year) {
     const name = (r.emp||'').trim();
     if (!name) return;
     let dayNum;
-    try { const d = new Date(r.date); dayNum = d.getDate(); if (isNaN(dayNum)) return; } catch { return; }
+    try {
+      // Handle "01 Apr 2026" and "2026-04-01" formats
+      const d = new Date(r.date);
+      dayNum = isNaN(d.getDate()) ? parseInt(r.date) : d.getDate();
+      if (isNaN(dayNum) || dayNum < 1 || dayNum > 31) return;
+    } catch { return; }
     if (!empOrder.includes(name)) empOrder.push(name);
     empDay[name+'|'+dayNum] = { inTime:r.inTime||'', outTime:r.outTime||'', status:r.status||'Present' };
   });
@@ -1725,16 +1706,18 @@ function saveStoredConfig(extra) {
 
 function populateSettings() {
   try {
-    const cfg = JSON.parse(localStorage.getItem(LS_CONFIG)||'{}');
-    const el = id => document.getElementById(id);
-    if (el('cfg-webAppUrl')) el('cfg-webAppUrl').value = cfg.webAppUrl || CONFIG.WEB_APP_URL || '';
-    if (el('cfg-apiKey'))    el('cfg-apiKey').value    = cfg.apiKey ? '••••••••••••' : '';
-    if (el('cfg-employees')) el('cfg-employees').value = (cfg.employees || DEFAULT_EMPLOYEES).join('\n');
-    if (el('cfg-pinFinance')) el('cfg-pinFinance').value = '';
-    if (el('cfg-pinAdmin'))   el('cfg-pinAdmin').value   = '';
-    const pb = el('savePinBtn');
-    if (pb) pb.disabled = currentRole !== 'superadmin';
-  } catch {}
+    const cfg = JSON.parse(localStorage.getItem(LS_CONFIG) || '{}');
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+    set('cfg-webAppUrl', cfg.webAppUrl || CONFIG.WEB_APP_URL || '');
+    set('cfg-apiKey',    cfg.apiKey ? '••••••••••••' : '');
+    set('cfg-employees', (cfg.employees || DEFAULT_EMPLOYEES).join('\n'));
+    set('cfg-pinFinance', '');
+    set('cfg-pinAdmin',   '');
+    const pb = document.getElementById('savePinBtn');
+    if (pb) pb.disabled = (currentRole !== 'superadmin');
+  } catch(e) {
+    console.error('populateSettings error:', e);
+  }
 }
 
 function saveSettings() {
