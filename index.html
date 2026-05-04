@@ -1116,6 +1116,13 @@ function generateDemoOCR(month, year) {
 // ════════════════════════════════════════════════════════
 // HISTORY — load from Sheets or demo cache
 // ════════════════════════════════════════════════════════
+function upsertHistory(entry) {
+  const i = historyData.findIndex(h => h.month === entry.month && h.year === entry.year);
+  if (i >= 0) historyData[i] = entry;
+  else historyData.unshift(entry);
+  try { localStorage.setItem('sb_att_history', JSON.stringify(historyData)); } catch {}
+}
+
 async function loadHistory() {
   if (sheetsReady) {
     try {
@@ -1402,6 +1409,8 @@ function toggleLate(id, checked) {
   renderReview();
 }
 
+function autoSaveDraft() { autoSaveReviewDraft(); }
+
 function autoSaveReviewDraft() {
   const label = document.getElementById('reviewMonthLabel').textContent;
   if (!label || label === '—' || !reviewRecords.length) return;
@@ -1593,7 +1602,8 @@ function renderAnalytics() {
 // ════════════════════════════════════════════════════════
 function downloadExcel() {
   if (!reviewRecords.length) { toast('No records to export', 'err'); return; }
-  generateAttendanceExcel(reviewRecords, reviewMonth, reviewYear);
+  const hols = getHolidaysForMonth(reviewMonth, reviewYear);
+  generateAttendanceExcel(reviewRecords, reviewMonth, reviewYear, hols);
 }
 
 function downloadExcelFromDraft() {
@@ -1605,58 +1615,298 @@ function downloadExcelFromDraft() {
   else toast('No records — process upload first', 'err');
 }
 
-function generateAttendanceExcel(records, monthName, year) {
-  if (typeof XLSX === 'undefined') { toast('SheetJS not loaded — check internet connection', 'err'); return; }
+
+// ════════════════════════════════════════════════════════
+// COMPANY HOLIDAY CALENDAR 2026
+// Source: LIST_OF_HOLIDAY.docx — Solid Bench, IMT Manesar
+// ════════════════════════════════════════════════════════
+const HOLIDAY_CALENDAR_2026 = {
+  1:  [1],        // January  — New Year (1 Jan)
+  2:  [26],       // February — Republic Day (26 Jan) falls in Jan but listed as 26-JAN
+  // Note: Republic Day = Jan 26, stored under month 1 (Jan)
+};
+
+// Full holiday list indexed by month (1-based) → array of day numbers
+const HOLIDAYS_2026 = {
+  1:  [1, 26],    // New Year (Jan 1), Republic Day (Jan 26)
+  3:  [4],        // Holi (Mar 4)
+  8:  [15, 28],   // Independence Day (Aug 15), Rakshabandan (Aug 28)
+  9:  [4, 17],    // Janmashtami (Sep 4), Vishwakarma Puja (Sep 17)
+  10: [2, 20],    // Gandhi Jayanti (Oct 2), Dussehra (Oct 20)
+  11: [8, 9],     // Diwali (Nov 8), Govardhan Puja (Nov 9)
+};
+
+function getHolidaysForMonth(monthName, year) {
+  if (year !== 2026) return [];
+  const MONTH_NUMS = ['January','February','March','April','May','June',
+    'July','August','September','October','November','December'];
+  const m = MONTH_NUMS.indexOf(monthName) + 1; // 1-based
+  return HOLIDAYS_2026[m] || [];
+}
+
+function generateAttendanceExcel(records, monthName, year, holidays) {
+  if (typeof XLSX === 'undefined') { toast('SheetJS not loaded', 'err'); return; }
   if (!records || !records.length) { toast('No records to export', 'err'); return; }
-  const MONTH_NUMS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  // Fallback: derive month/year from records if not passed
-  if (!monthName || monthName === '') {
-    try { const d = new Date(records[0].date); monthName = MONTH_NUMS[d.getMonth()]; year = d.getFullYear(); } catch {}
-  }
-  if (!year || year === 0) { year = new Date().getFullYear(); }
+
+  const MONTH_NUMS = ['January','February','March','April','May','June',
+    'July','August','September','October','November','December'];
+  const DAY_NAMES = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+  if (!monthName) { try { const d=new Date(records[0].date); monthName=MONTH_NUMS[d.getMonth()]; year=d.getFullYear(); } catch{} }
+  if (!year) year = new Date().getFullYear();
   const monthIdx = MONTH_NUMS.indexOf(monthName);
-  if (monthIdx === -1) { toast('Could not determine month — check records', 'err'); return; }
-  const daysInMonth = new Date(year, monthIdx + 1, 0).getDate();
-  const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const empOrder = [];
-  const empDay = {};
+  if (monthIdx === -1) { toast('Invalid month: '+monthName, 'err'); return; }
+  const daysInMonth = new Date(year, monthIdx+1, 0).getDate();
+
+  // Holiday set — day numbers that are holidays this month
+  const holidayDays = new Set(holidays || []);
+
+  const DEPT_MAP = {
+    'RAMAUTAR MAHTO':'Pro. Staff','DILIP SHARMA':'Pro. Staff','NASARUDDIN ALI':'Pro. Staff',
+    'RADHE SHYAM':'Pro. Staff','MULCHANDRA':'Pro. Staff','MD SOHIL':'Pro. Staff',
+    'MANOJ KUMAR':'Pro. Staff','RAJU':'Pro. Staff','Brijmohan':'Pro. Staff',
+    'RAGHVINDER':'Pro. Staff','Raj Kumar Tripathi':'Pro. Staff','Hemant Tiwari':'Pro. Staff',
+    'Bablu':'Pro. Staff','SONU':'Pro. Staff','Shilanath Ray':'Pro. Staff',
+    'Ashok':'Pro. Staff','Rohit':'Pro. Staff','jitender':'Pro. Staff',
+    'Anand':'Pro. Staff','PAWAN':'Pro. Staff','KULDEEP':'Pro. Staff',
+    'BIRENDER':'Pro. Staff','SAHIB SINGH':'Pro. Staff','Manjeet':'Office Staff',
+    'RAHUL KUMAR JHA':'Office Staff','YASH':'Office Staff','DEBANJAN':'Office Staff',
+    'ADARSH BABU':'Office Staff','RAJA KUSHWAHA':'Office Staff',
+    'ANANAYA SAXENA':'Office Staff','Avantika Oli':'Own',
+    'RUPESH':'Pro. Staff','Babu Kumar':'Pro. Staff',
+    'Krishna Kumar':'Pro. Staff','Adita Kumar':'Pro. Staff',
+  };
+
+  function getDept(name) { return DEPT_MAP[name] || DEPT_MAP[name.toUpperCase()] || 'Pro. Staff'; }
+  function isOffice(dept) { return dept === 'Office Staff'; }
+  function isOwn(dept)    { return dept === 'Own'; }
+  function dow(d) {
+    const day = new Date(year, monthIdx, d).getDay(); // 0=Sun..6=Sat
+    return day === 0 ? 'Sun' : DAY_NAMES[day-1];
+  }
+
+  // Build emp→day lookup
+  const empOrder = [], empDay = {};
   records.forEach(r => {
-    const name = (r.emp||'').trim();
-    if (!name) return;
-    let dayNum;
-    try {
-      // Handle "01 Apr 2026" and "2026-04-01" formats
-      const d = new Date(r.date);
-      dayNum = isNaN(d.getDate()) ? parseInt(r.date) : d.getDate();
-      if (isNaN(dayNum) || dayNum < 1 || dayNum > 31) return;
-    } catch { return; }
+    const name = (r.emp||'').trim(); if (!name) return;
+    let dn; try { const d=new Date(r.date); dn=isNaN(d.getDate())?parseInt(r.date):d.getDate(); if(!dn||dn<1||dn>31) return; } catch { return; }
     if (!empOrder.includes(name)) empOrder.push(name);
-    empDay[name+'|'+dayNum] = { inTime:r.inTime||'', outTime:r.outTime||'', status:r.status||'Present' };
+    empDay[name+'|'+dn] = { inTime:r.inTime||'', outTime:r.outTime||'', status:r.status||'Present' };
   });
   if (!empOrder.length) { toast('No valid records', 'err'); return; }
+
+  // Column layout — note: col F = index 5 (0-based), col 6 = 1-based
+  const DAY_COL_START = 5;  // 0-based → col F
+  const LAST_DAY_COL  = DAY_COL_START + daysInMonth - 1;
+  const SUM_START     = LAST_DAY_COL + 2; // blank gap then summary
+
+  // Summary cols (0-based offsets from SUM_START):
+  // 0=TP(P)  1=W/S  2=SUN  3=TH(H)  4=TL(L)  5=TA(A)  6=TW.Day  7=T.Day  8=OT
+  // Then leave balance cols (gap AT) then AU-BB then BC-BF
+  const SUM_LABELS2 = ['T. P','W/O','W/O','T. H','T. L','T. A','T. W.','T.','Over'];
+  const SUM_KEYS3   = ['P',  'W/S','SUN','H',   'L',   'A',  'Day', 'Day','Time'];
+  // Leave balance starts at SUM_START+10 (gap at +9)
+  const LEAVE_START = SUM_START + 10;
+  const LEAVE_LABELS2 = ['Opening','Opening','Generated','Generated','Used','Used','Closing','Closing'];
+  const LEAVE_LABELS3 = ['E L','SL & CL','E L','SL & CL','E L','SL & CL','E L','SL & CL'];
+  const SUN_LEAVE_START = LEAVE_START + 8 + 1; // gap then Sunday leave cols
+  const SUN_LABELS2 = ['Opening','Generated','Used','Closing'];
+  const SUN_LABELS3 = ['Sunday','Sunday','Sunday','Sunday'];
+
+  function colLetter(i) {
+    let r='', n=i+1;
+    while(n>0){r=String.fromCharCode((n-1)%26+65)+r;n=Math.floor((n-1)/26);}
+    return r;
+  }
+  function addr(row0, col0) { return colLetter(col0)+(row0+1); }
+
   const wb = XLSX.utils.book_new();
   const ws = {};
-  function c(r,col,v) { ws[XLSX.utils.encode_cell({r,c:col})] = {v, t: typeof v==='number'?'n':'s'}; }
-  for (let d=1;d<=daysInMonth;d++) { const dt=new Date(year,monthIdx,d); c(0,d+2,DAY_NAMES[dt.getDay()]); }
-  c(1,0,'S.No'); c(1,1,'Name'); c(1,2,'STA');
-  for (let d=1;d<=daysInMonth;d++) c(1,d+2,d,'n');
+
+  function sc(row, col, val, numFmt) {
+    const a=addr(row,col); ws[a]={v:val,t:typeof val==='number'?'n':'s'};
+    if(numFmt) ws[a].z=numFmt;
+  }
+  function sf(row, col, formula, numFmt) {
+    const a=addr(row,col); ws[a]={f:formula,t:'n'};
+    if(numFmt) ws[a].z=numFmt;
+  }
+
+  // ── Row 0: reference times ──
+  sc(0,0,'09:00'); sc(0,1,'11:30'); sc(0,4,'00:30'); sc(0,5,'10:00');
+  // ── Row 1: reference times ──
+  sc(1,0,'08:30'); sc(1,1,'08:00');
+  // ── Row 1: STA + day names ──
+  sc(1,4,'STA');
+  for (let d=1;d<=daysInMonth;d++) { const dn=dow(d); sc(1,DAY_COL_START+d-1,dn); }
+  SUM_LABELS2.forEach((lbl,i)=>sc(1,SUM_START+i,lbl));
+  LEAVE_LABELS2.forEach((lbl,i)=>sc(1,LEAVE_START+i,lbl));
+  SUN_LABELS2.forEach((lbl,i)=>sc(1,SUN_LEAVE_START+i,lbl));
+
+  // ── Row 2: S.No | Name | Dept | Working Time | STA | dates | summary headers ──
+  sc(2,0,'S.No'); sc(2,1,'Name'); sc(2,2,'Depatment'); sc(2,3,'Working Time'); sc(2,4,'STA');
+  for (let d=1;d<=daysInMonth;d++) sc(2,DAY_COL_START+d-1,d,'0');
+  SUM_KEYS3.forEach((k,i)=>sc(2,SUM_START+i,k));
+  LEAVE_LABELS3.forEach((k,i)=>sc(2,LEAVE_START+i,k));
+  SUN_LABELS3.forEach((k,i)=>sc(2,SUN_LEAVE_START+i,k));
+
+  // ── Employee rows ──
+  const START_ROW = 3;
   empOrder.forEach((emp,ei) => {
-    const inRow=2+ei*2, outRow=inRow+1;
-    c(inRow,0,String(ei+1).padStart(2,'0')); c(inRow,1,emp.toUpperCase()); c(inRow,2,'IN'); c(outRow,2,'OUT');
+    const inR=START_ROW+ei*4, outR=inR+1, otR=inR+2, stsR=inR+3;
+    const dept=getDept(emp), office=isOffice(dept), own=isOwn(dept);
+    const wt    = office?'09:00':own?'':'08:30';
+    const otRef = office?'$A$1':'$A$2';
+
+    // Labels
+    sc(inR,0,String(ei+1).padStart(2,'0')); sc(inR,1,emp.toUpperCase()); sc(inR,2,dept);
+    sc(inR,3,wt); sc(inR,4,'IN'); sc(outR,4,'OUT'); sc(otR,4,'OT'); sc(stsR,4,'STS');
+
+    // Build STS values first (need to apply absent-sandwich rule)
+    const stsValues = {};
+
     for (let d=1;d<=daysInMonth;d++) {
+      const col=DAY_COL_START+d-1, dn=dow(d), isSun=(dn==='Sun');
       const data=empDay[emp+'|'+d];
-      const absent=data&&(data.status==='Absent'||(!data.inTime&&!data.outTime));
-      c(inRow,d+2,absent?'A':(data?data.inTime:''));
-      c(outRow,d+2,absent?'':(data?data.outTime:''));
+      const isHoliday=holidayDays.has(d);
+      let stsVal='';
+
+      if (isHoliday) {
+        stsVal='H';
+      } else if (isSun) {
+        if (!office && data && data.inTime && !['A','L','H','Sun',''].includes(data.inTime)) {
+          stsVal='W/S'; // Pro Staff worked Sunday
+        } else {
+          stsVal='Sun'; // default — will check sandwich rule after
+        }
+      } else if (!data || data.status==='Absent' || data.inTime==='A' || (!data.inTime&&!data.outTime&&data.status!=='Present')) {
+        stsVal='A';
+      } else if (data.inTime==='H') { stsVal='H'; }
+      else if (['L','M'].includes(data.inTime)) { stsVal='L'; }
+      else if (data.inTime) { stsVal = own ? '' : 'P'; }
+
+      stsValues[d] = stsVal;
+    }
+
+    // ── Absent sandwich rule: if absent day before AND after a Sunday → Sunday = Absent ──
+    for (let d=1;d<=daysInMonth;d++) {
+      if (dow(d)==='Sun' && stsValues[d]==='Sun') {
+        const dayBefore = d-1, dayAfter = d+1;
+        const stsBefore = dayBefore >= 1 ? stsValues[dayBefore] : null;
+        const stsAfter  = dayAfter <= daysInMonth ? stsValues[dayAfter] : null;
+        // If both sides are Absent (or if only one side exists and it's absent)
+        const beforeAbsent = !stsBefore || stsBefore === 'A';
+        const afterAbsent  = !stsAfter  || stsAfter  === 'A';
+        if (beforeAbsent && afterAbsent && (stsBefore === 'A' || stsAfter === 'A')) {
+          stsValues[d] = 'A';
+        }
+      }
+    }
+
+    // Now write cells using resolved stsValues
+    for (let d=1;d<=daysInMonth;d++) {
+      const col=DAY_COL_START+d-1, dn=dow(d), isSun=(dn==='Sun');
+      const data=empDay[emp+'|'+d];
+      const stsVal=stsValues[d];
+      const isHoliday=holidayDays.has(d);
+      const inA=addr(inR,col), outA=addr(outR,col);
+
+      let inVal='', outVal='', otFormula=null;
+
+      if (isHoliday) {
+        inVal=outVal='H';
+      } else if (stsVal==='A' && isSun) {
+        // Sunday made absent by sandwich rule
+        inVal=outVal='A';
+      } else if (stsVal==='W/S') {
+        inVal=data.inTime; outVal=data.outTime||'';
+        otFormula=`${outA}-${inA}-$E$1`;
+      } else if (stsVal==='Sun') {
+        inVal=outVal='Sun';
+      } else if (stsVal==='A') {
+        inVal=outVal='A';
+      } else if (stsVal==='H') {
+        inVal=outVal='H';
+      } else if (stsVal==='L') {
+        inVal=outVal='L';
+      } else if (stsVal==='P' || (own && stsVal==='')) {
+        if (data) { inVal=data.inTime; outVal=data.outTime||''; }
+        if (!own) otFormula=`${outA}-${inA}-${otRef}`;
+      }
+
+      // Write IN
+      sc(inR, col, inVal);
+      // Write OUT
+      sc(outR, col, outVal);
+      // Write OT
+      if (otFormula) sf(otR, col, otFormula, 'h:mm');
+      else           sc(otR, col, '00:00', 'h:mm');
+      // Write STS
+      sc(stsR, col, stsVal);
+    }
+
+    // ── Summary formulas ──
+    const stsRange=colLetter(DAY_COL_START)+(stsR+1)+':'+colLetter(LAST_DAY_COL)+(stsR+1);
+    const otRange =colLetter(DAY_COL_START)+(otR+1) +':'+colLetter(LAST_DAY_COL)+(otR+1);
+    const sumCL   = (i) => colLetter(SUM_START+i);
+
+    // TP = COUNTIF STS='P'
+    sf(inR, SUM_START+0, `COUNTIF(${stsRange},${sumCL(0)}3)`);
+    // W/S = COUNTIF STS='W/S'
+    sf(inR, SUM_START+1, `COUNTIF(${stsRange},${sumCL(1)}3)`);
+    // SUN = COUNTIF STS='Sun'
+    sf(inR, SUM_START+2, `COUNTIF(${stsRange},${sumCL(2)}3)`);
+    // TH = COUNTIF STS='H'
+    sf(inR, SUM_START+3, `COUNTIF(${stsRange},${sumCL(3)}3)`);
+    // TL = COUNTIF STS='L'
+    sf(inR, SUM_START+4, `COUNTIF(${stsRange},${sumCL(4)}3)`);
+    // TA = COUNTIF STS='A'
+    sf(inR, SUM_START+5, `COUNTIF(${stsRange},${sumCL(5)}3)`);
+    // TW.Day = P + W/S + SUN + H + L  (total working, excluding absent)
+    sf(inR, SUM_START+6, `SUM(${sumCL(0)}${inR+1}:${sumCL(4)}${inR+4})`);
+    // T.Day = P + W/S + SUN + H + L + A (total days = all)
+    sf(inR, SUM_START+7, `SUM(${sumCL(0)}${inR+1}:${sumCL(5)}${inR+4})`);
+    // OT total
+    sf(inR, SUM_START+8, `SUM(${otRange})`, 'h:mm');
+
+    // Leave balance closing formulas — Office Staff only
+    if (office) {
+      const lCL = (i) => colLetter(LEAVE_START+i);
+      sf(inR, LEAVE_START+6, `${lCL(0)}${inR+1}+${lCL(2)}${inR+1}-${lCL(4)}${inR+1}`);
+      sf(inR, LEAVE_START+7, `${lCL(1)}${inR+1}+${lCL(3)}${inR+1}-${lCL(5)}${inR+1}`);
+      const sCL = (i) => colLetter(SUN_LEAVE_START+i);
+      sf(inR, SUN_LEAVE_START+3, `${sCL(0)}${inR+1}+${sCL(1)}${inR+1}-${sCL(2)}${inR+1}`);
     }
   });
-  ws['!ref'] = XLSX.utils.encode_range({s:{r:0,c:0},e:{r:1+empOrder.length*2,c:3+daysInMonth}});
-  ws['!cols'] = [{wch:5},{wch:24},{wch:4},...Array(daysInMonth).fill({wch:8})];
-  ws['!rows'] = [{hpt:13},{hpt:15},...Array(empOrder.length*2).fill({hpt:20})];
+
+  // ── Sheet ref ──
+  const lastRow = START_ROW + empOrder.length*4;
+  const lastCol = SUN_LEAVE_START + 3;
+  ws['!ref'] = XLSX.utils.encode_range({s:{r:0,c:0},e:{r:lastRow,c:lastCol}});
+
+  // ── Column widths ──
+  const cols=[{wch:4.5},{wch:21},{wch:9.7},{wch:10.4},{wch:3.9}];
+  for(let d=0;d<daysInMonth;d++) cols.push({wch:5.8});
+  cols.push({wch:2}); // gap before summary
+  for(let i=0;i<9;i++) cols.push({wch:5.5}); // summary cols
+  cols.push({wch:2}); // gap before leave
+  for(let i=0;i<8;i++) cols.push({wch:6}); // leave balance
+  cols.push({wch:2}); // gap before sunday leave
+  for(let i=0;i<4;i++) cols.push({wch:6}); // sunday leave
+  ws['!cols']=cols;
+
+  // ── Row heights ──
+  const rows=[{hpt:12.5},{hpt:13},{hpt:15}];
+  for(let i=0;i<empOrder.length*4;i++) rows.push({hpt:12});
+  ws['!rows']=rows;
+
+  // ── Freeze panes ──
+  ws['!freeze']={xSplit:5,ySplit:3,topLeftCell:'F4',activePane:'bottomRight',state:'frozen'};
+
   const sheetLabel = monthName.slice(0,3)+'-'+year;
   XLSX.utils.book_append_sheet(wb, ws, sheetLabel);
   XLSX.writeFile(wb, 'Attendance_'+monthName+'_'+year+'.xlsx');
-  toast('Downloaded: Attendance_'+monthName+'_'+year+'.xlsx', 'ok');
+  toast('Downloaded: Attendance_'+monthName+'_'+year+'.xlsx','ok');
 }
 
 // ════════════════════════════════════════════════════════
