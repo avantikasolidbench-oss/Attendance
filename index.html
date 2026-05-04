@@ -421,7 +421,8 @@ select:focus{border-color:var(--accent)}
         <span style="color:var(--danger)"><b id="rvLow">0</b> low confidence</span> &nbsp;·&nbsp;
         <span style="color:var(--warn)"><b id="rvFlagged">0</b> flagged</span>
       </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <span id="rvSaveIndicator" style="font-size:10px;color:var(--green);opacity:0.4;transition:opacity .3s"></span>
         <button class="btn btn-outline" style="font-size:11px" onclick="rvFilter('all')" id="rfAll">All</button>
         <button class="btn btn-outline" style="font-size:11px" onclick="rvFilter('low')" id="rfLow">⚠ Low Conf</button>
         <button class="btn btn-outline" style="font-size:11px;color:var(--warn)" onclick="rvFilter('unclear')" id="rfUnclear">📷 Unclear</button>
@@ -460,6 +461,7 @@ select:focus{border-color:var(--accent)}
       <span><span class="rv-legend-dot" style="background:#fff9e6;border:1px solid #ccc"></span>Sunday</span>
       <span><span class="rv-legend-dot" style="background:#e8f0e8;border:1px solid #ccc"></span>Holiday</span>
       <span><span class="rv-legend-dot" style="background:transparent;border:2px solid var(--danger)"></span>Low confidence — check</span>
+      <span><span class="rv-legend-dot" style="background:#e3f2fd;border:1px solid #ccc"></span>Gate Pass</span>
       <span style="margin-left:auto;font-size:10px;color:var(--muted)">Click any IN/OUT cell to edit inline</span>
     </div>
   </div>
@@ -1223,11 +1225,20 @@ async function extractFromImage(b64, mediaType, month, year, startId, sourceFile
   const prompt=`You are reading a handwritten daily attendance register for a workshop in India.
 Format: date at top (e.g. 01/04/26 = 1 Apr 2026), each row = one employee.
 Columns: serial | name | IN time | IN signature | OUT time | OUT signature.
-"A" = Absent. Times are 24hr (9:00, 8:30, 20:30). Ignore signature columns — read only the time values.
-Known employees: ${employeeList}
+"A" = Absent. Times are 24hr format. Ignore signature columns — read only the numeric time values.
+
+CRITICAL TIME READING RULES:
+- IN times (morning arrival) are ALWAYS between 07:00 and 11:00. If you read an IN time like 20:xx, 21:xx, 19:xx — you have made an error. Re-read it. It is almost certainly 08:xx, 09:xx, or 10:xx.
+- OUT times (evening departure) are ALWAYS between 16:00 and 22:00. If you read an OUT time like 08:xx, 09:xx — you have made an error. It is almost certainly 18:xx, 19:xx, or 20:xx.
+- Common OCR mistakes: "9" misread as "21", "8" misread as "20", "0" misread as nothing. Always sanity check.
+- If IN time > OUT time, you have misread one of them — correct it.
+- Typical IN range: 08:00–10:00. Typical OUT range: 17:00–21:00.
+
+Known employees (match names as closely as possible): ${employeeList}
 Return ONLY a JSON array, no markdown:
 [{"name":"...","date":"DD Mon YYYY","day":"Mon","inTime":"HH:MM","outTime":"HH:MM","status":"Present","confidence":85}]
-Rules: A=Absent(inTime="",outTime=""); inTime>09:30=Late; outTime>20:00=Overtime; else Present.`;
+Rules: A=Absent(inTime="",outTime=""); inTime>09:30=Late; outTime>20:00=Overtime; else Present.
+Confidence: lower score (40-60) if handwriting unclear, higher (80-95) if clear.`;
   const response=await fetch('https://api.anthropic.com/v1/messages',{
     method:'POST',
     headers:{'Content-Type':'application/json','x-api-key':CONFIG.ANTHROPIC_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
@@ -1237,7 +1248,45 @@ Rules: A=Absent(inTime="",outTime=""); inTime>09:30=Late; outTime>20:00=Overtime
   const data=await response.json();
   const clean=data.content[0].text.trim().replace(/^```json\n?|^```\n?|\n?```$/gm,'').trim();
   let rows; try { rows=JSON.parse(clean); } catch(e) { throw new Error('Could not parse response: '+clean.slice(0,80)); }
-  return rows.map((r,i)=>({ id:startId+i, emp:r.name||'', date:r.date||'', day:r.day||'', inTime:r.inTime||'', outTime:r.outTime||'', hours:calcHours(r.inTime,r.outTime), status:r.status||'Present', late:r.status==='Late', note:'', ot:r.status==='Overtime', conf:r.confidence!=null?r.confidence:80, sourceFile:sourceFileName }));
+  return rows.map((r,i)=>{
+    let inT = r.inTime||'', outT = r.outTime||'';
+    let note = '';
+    // Sanity check: IN should be morning (07-11), OUT should be evening (16-22)
+    if (inT && /^\d{1,2}:\d{2}$/.test(inT)) {
+      const inH = parseInt(inT.split(':')[0]);
+      if (inH >= 16) {
+        // Likely misread — try subtracting 12
+        const corrected = (inH-12)+':'+inT.split(':')[1];
+        note = 'IN time corrected from '+inT+' to '+corrected;
+        inT = corrected;
+      }
+    }
+    if (outT && /^\d{1,2}:\d{2}$/.test(outT)) {
+      const outH = parseInt(outT.split(':')[0]);
+      if (outH < 12 && outH > 0) {
+        // Likely misread — add 12
+        const corrected = (outH+12)+':'+outT.split(':')[1];
+        note = (note?note+'; ':'')+'OUT time corrected from '+outT+' to '+corrected;
+        outT = corrected;
+      }
+    }
+    // If IN > OUT after correction, flag it
+    let conf = r.confidence!=null?r.confidence:80;
+    if (inT && outT) {
+      const [ih,im]=inT.split(':').map(Number);
+      const [oh,om]=outT.split(':').map(Number);
+      if ((ih*60+im) > (oh*60+om)) {
+        note = (note?note+'; ':'')+'IN>OUT — please verify';
+        conf = Math.min(conf, 40);
+      }
+    }
+    return { id:startId+i, emp:r.name||'', date:r.date||'', day:r.day||'',
+      inTime:inT, outTime:outT, hours:calcHours(inT,outT),
+      status:r.status||'Present', late:r.status==='Late',
+      note:note, ot:r.status==='Overtime',
+      conf:note?Math.min(conf,55):conf,
+      sourceFile:sourceFileName };
+  });
 }
 
 function calcHours(inTime, outTime) {
@@ -1574,16 +1623,17 @@ function renderReview() {
             else if (isSun) cellClass += ' sun';
             else cellClass += ' present';
           } else if (type === 'OT') {
-            // Calculate OT display
-            if (rec.inTime && rec.outTime && rec.status !== 'Absent') {
+            // Calculate OT display — use correct standard per dept
+            if (rec && rec.inTime && rec.outTime && rec.status !== 'Absent') {
               try {
+                const empDept = (typeof DEPT_MAP !== 'undefined' && (DEPT_MAP[emp] || DEPT_MAP[emp.toUpperCase()])) || 'Pro. Staff';
+                const std = isSun ? 0.5 : (empDept === 'Office Staff' ? 9.0 : 8.5);
                 const [ih,im]=rec.inTime.split(':').map(Number);
                 const [oh,om]=rec.outTime.split(':').map(Number);
-                const std = isSun ? 0.5 : 8.5;
                 const worked=(oh+om/60)-(ih+im/60);
                 const ot = Math.max(worked-std, 0);
-                cellVal = ot > 0 ? (Math.floor(ot)+'h'+(ot%1>0?Math.round(ot%1*60)+'m':'')) : '—';
-                cellClass += ot > 0 ? ' ot' : ' present';
+                cellVal = ot > 0.01 ? (Math.floor(ot)+'h'+(ot%1>0.01?Math.round(ot%1*60)+'m':'')) : '—';
+                cellClass += ot > 0.01 ? ' ot' : ' present';
               } catch { cellVal='—'; cellClass+=' empty'; }
             } else {
               cellVal = '—'; cellClass += ' empty';
@@ -1597,12 +1647,29 @@ function renderReview() {
         }
 
         // Make IN/OUT cells editable, OT/STS read-only
-        if ((type==='IN'||type==='OUT') && rec && rec.status!=='Absent' && !isHol && !isSun) {
+        if ((type==='IN'||type==='OUT') && !isHol) {
+          // Editable for all — including absent (can correct A to a time)
           const field = type==='IN'?'inTime':'outTime';
+          const safeEmp = emp.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+          const displayVal = isSun ? 'Sun' : (cellVal || '');
+          const readonly = isSun ? ' readonly style="background:var(--surface2);cursor:default"' : '';
           html += '<td class="' + cellClass + '">'
-            + '<input value="' + cellVal + '" placeholder="—"'
+            + '<input value="' + displayVal + '" placeholder="—"'
+            + ' data-emp="' + safeEmp + '" data-day="' + d + '" data-field="' + field + '"'
+            + ' onchange="updateRecByEmpDayAttr(this)"'
             + ' onfocus="this.select()"'
-            + ' title="Conf: ' + (rec?rec.conf:'') + '%' + (isLowConf?' ⚠ Low confidence':'') + '"'
+            + readonly
+            + ' title="' + (isLowConf?'⚠ Low confidence — check this value':'') + '"'
+            + '></td>';
+        } else if ((type==='IN'||type==='OUT') && !rec && !isHol && !isSun) {
+          // No record for this day — allow entry
+          const field = type==='IN'?'inTime':'outTime';
+          const safeEmp = emp.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+          html += '<td class="rv-cell empty">'
+            + '<input value="" placeholder="—"'
+            + ' data-emp="' + safeEmp + '" data-day="' + d + '" data-field="' + field + '"'
+            + ' onchange="updateRecByEmpDayAttr(this)"'
+            + ' onfocus="this.select()"'
             + '></td>';
         } else {
           html += '<td class="' + cellClass + '" title="' + (rec&&rec.note?'Note: '+rec.note:'') + '">'
@@ -1612,6 +1679,36 @@ function renderReview() {
       }
       html += '</tr>';
     });
+
+    // ── GP row — show if any GP entries exist for this employee this month ──
+    const gpRawEntries = getGPEntries(monthName, year).filter(e => e.emp === emp);
+    const gpAllocated  = getGPAllocationForEmployee(emp, monthName, year);
+    if (gpRawEntries.length > 0 || gpAllocated.length > 0) {
+      html += '<tr>';
+      html += '<td class="emp-name" style="font-size:9px;color:var(--blue);font-weight:700;background:#e8f4fd">Gate Pass</td>';
+      html += '<td class="rv-row-lbl" style="color:var(--blue);background:#e8f4fd">GP</td>';
+      for (let d = 1; d <= daysInMonth; d++) {
+        // Check raw GP entries for this day
+        const dayGP = gpRawEntries.filter(e => {
+          try { return new Date(e.date).getDate() === d; } catch { return false; }
+        }).reduce((s,e) => s+e.hours, 0);
+        // Check allocated GP for this day
+        const dayAlloc = gpAllocated.find(a => {
+          try { return new Date(a.date).getDate() === d; } catch { return false; }
+        });
+        const gpHrs = dayGP > 0 ? dayGP : (dayAlloc ? dayAlloc.gpUsed : 0);
+        if (gpHrs > 0) {
+          const hrs = Math.floor(gpHrs);
+          const mins = Math.round((gpHrs - hrs) * 60);
+          const display = hrs + 'h' + (mins > 0 ? mins + 'm' : '');
+          html += '<td class="rv-cell" style="background:#e3f2fd;color:var(--blue);font-weight:700;font-size:10px">'
+            + '<span style="padding:2px 4px">' + display + '</span></td>';
+        } else {
+          html += '<td class="rv-cell empty"></td>';
+        }
+      }
+      html += '</tr>';
+    }
 
     // Visual separator between employees
     html += '<tr><td colspan="' + (daysInMonth+2) + '" style="height:3px;background:var(--border);padding:0"></td></tr>';
@@ -1632,15 +1729,60 @@ function updateRecByEmpDayAttr(input) {
 }
 
 function updateRecByEmpDay(emp, dayNum, field, value) {
-  const recs = reviewRecords.filter(r => {
+  if (!value || value === '—') return; // ignore blank
+  
+  const MONTH_NUMS = ['January','February','March','April','May','June',
+    'July','August','September','October','November','December'];
+
+  let recs = reviewRecords.filter(r => {
     try { const d = new Date(r.date); return r.emp===emp && (isNaN(d.getDate())?parseInt(r.date):d.getDate())===dayNum; } catch { return false; }
   });
+
+  if (recs.length === 0) {
+    // No record for this day — create one
+    const label = document.getElementById('reviewMonthLabel').textContent;
+    const parts = label.split(' ');
+    const monthName = parts[0], year = +parts[1];
+    const mIdx = MONTH_NUMS.indexOf(monthName);
+    const dt = new Date(year, mIdx, dayNum);
+    const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const SHORT_MONTHS_LOCAL = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const newRec = {
+      id: Date.now(),
+      emp,
+      date: String(dayNum).padStart(2,'0') + ' ' + SHORT_MONTHS_LOCAL[mIdx] + ' ' + year,
+      day: DAY_NAMES[dt.getDay()],
+      inTime: field === 'inTime' ? value : '',
+      outTime: field === 'outTime' ? value : '',
+      hours: '—', status: 'Present', late: false, note: '', ot: false, conf: 85
+    };
+    reviewRecords.push(newRec);
+    recs = [newRec];
+  }
+
   recs.forEach(r => {
     r[field] = value;
-    r.conf = Math.min(r.conf + 15, 99); // confidence goes up when manually edited
+    // If time entered for absent employee → mark present
+    if (value && value !== 'A' && r.status === 'Absent') {
+      r.status = 'Present';
+      if (field === 'inTime') r.outTime = r.outTime || '';
+      if (field === 'outTime') r.inTime = r.inTime || '';
+    }
+    // Recalculate hours
+    if (r.inTime && r.outTime) {
+      try {
+        const [ih,im] = r.inTime.split(':').map(Number);
+        const [oh,om] = r.outTime.split(':').map(Number);
+        const hrs = (oh+om/60)-(ih+im/60);
+        r.hours = hrs > 0 ? (Math.round(hrs*10)/10).toString() : '—';
+        r.status = hrs > 9 ? 'Overtime' : r.status === 'Absent' ? 'Present' : r.status;
+        r.ot = hrs > 9;
+      } catch {}
+    }
+    r.conf = Math.min(r.conf + 20, 99); // manual edit = higher confidence
   });
+
   autoSaveReviewDraft();
-  // Re-render just that cell area — full re-render is too slow for large grids
   renderReview();
 }
 
@@ -1769,6 +1911,9 @@ function autoSaveReviewDraft() {
   if (!month || !year) return;
   localStorage.setItem('sb_att_draft_' + month + '_' + year,
     JSON.stringify({ month, year, records: reviewRecords, savedAt: new Date().toISOString() }));
+  // Show save indicator
+  const el = document.getElementById('rvSaveIndicator');
+  if (el) { el.textContent = '💾 Draft saved ' + new Date().toLocaleTimeString(); el.style.opacity='1'; setTimeout(()=>el.style.opacity='0.4',2000); }
 }
 
 async function finaliseAndSave() {
@@ -2205,8 +2350,21 @@ function runSmartAllocation() {
   if(!reviewRecords.length){ toast("Load month attendance in Review tab first","err"); return; }
 
   const preview=document.getElementById('allocationPreview');
-  const STANDARD_HOURS = 8.5; // Pro Staff standard day
-  const MAX_DAY = 8.0; // GP can only top up to 8hrs
+  const DEPT_MAP_GP = {
+    'RAMAUTAR MAHTO':'Pro. Staff','DILIP SHARMA':'Pro. Staff','NASARUDDIN ALI':'Pro. Staff',
+    'RADHE SHYAM':'Pro. Staff','MULCHANDRA':'Pro. Staff','MD SOHIL':'Pro. Staff',
+    'MANOJ KUMAR':'Pro. Staff','RAJU':'Pro. Staff','Brijmohan':'Pro. Staff',
+    'RAGHVINDER':'Pro. Staff','Raj Kumar Tripathi':'Pro. Staff','Hemant Tiwari':'Pro. Staff',
+    'Bablu':'Pro. Staff','SONU':'Pro. Staff','Shilanath Ray':'Pro. Staff',
+    'Ashok':'Pro. Staff','Rohit':'Pro. Staff','jitender':'Pro. Staff',
+    'Anand':'Pro. Staff','PAWAN':'Pro. Staff','KULDEEP':'Pro. Staff',
+    'BIRENDER':'Pro. Staff','SAHIB SINGH':'Pro. Staff','Manjeet':'Office Staff',
+    'RAHUL KUMAR JHA':'Office Staff','YASH':'Office Staff','DEBANJAN':'Office Staff',
+    'ADARSH BABU':'Office Staff','RAJA KUSHWAHA':'Office Staff',
+    'ANANAYA SAXENA':'Office Staff','Avantika Oli':'Own',
+    'RUPESH':'Pro. Staff','Babu Kumar':'Pro. Staff',
+    'Krishna Kumar':'Pro. Staff','Adita Kumar':'Pro. Staff',
+  };
 
   // Group GP hours by employee
   const gpByEmp={};
@@ -2215,13 +2373,17 @@ function runSmartAllocation() {
   const allocationResults=[];
 
   Object.entries(gpByEmp).forEach(([emp,gpHours]) => {
+    const dept = DEPT_MAP_GP[emp] || DEPT_MAP_GP[emp.toUpperCase()] || 'Pro. Staff';
+    const STANDARD_HOURS = dept === 'Office Staff' ? 9.0 : 8.5; // standard working day
+    const MAX_DAY = STANDARD_HOURS; // GP tops up to standard hours max
+
     // Find all days for this employee with shortfall
     const empRecords=reviewRecords.filter(r=>r.emp===emp && r.status!=='Absent' && r.status!=='Leave');
     const shortfallDays=[];
     empRecords.forEach(r=>{
       const hrs=parseFloat(r.hours);
-      if(!isNaN(hrs) && hrs<MAX_DAY) {
-        shortfallDays.push({ date:r.date, day:r.day, worked:hrs, shortfall:MAX_DAY-hrs, id:r.id });
+      if(!isNaN(hrs) && hrs<STANDARD_HOURS) {
+        shortfallDays.push({ date:r.date, day:r.day, worked:hrs, shortfall:STANDARD_HOURS-hrs, id:r.id });
       }
     });
 
@@ -2236,7 +2398,7 @@ function runSmartAllocation() {
     for(const day of shortfallDays) {
       if(remaining<=0) break;
       const canUse=Math.min(remaining, day.shortfall);
-      allocated.push({ date:day.date, day:day.day, worked:day.worked, gpUsed:canUse, newTotal:Math.min(day.worked+canUse,MAX_DAY) });
+      allocated.push({ date:day.date, day:day.day, worked:day.worked, gpUsed:canUse, newTotal:Math.min(day.worked+canUse, STANDARD_HOURS) });
       remaining-=canUse;
     }
     allocationResults.push({emp,gpHours,allocated,unusedGP:remaining});
@@ -2344,6 +2506,22 @@ function getHolidaysForMonth(monthName, year) {
   return HOLIDAYS_2026[m] || [];
 }
 
+const DEPT_MAP = {
+  'RAMAUTAR MAHTO':'Pro. Staff','DILIP SHARMA':'Pro. Staff','NASARUDDIN ALI':'Pro. Staff',
+  'RADHE SHYAM':'Pro. Staff','MULCHANDRA':'Pro. Staff','MD SOHIL':'Pro. Staff',
+  'MANOJ KUMAR':'Pro. Staff','RAJU':'Pro. Staff','Brijmohan':'Pro. Staff',
+  'RAGHVINDER':'Pro. Staff','Raj Kumar Tripathi':'Pro. Staff','Hemant Tiwari':'Pro. Staff',
+  'Bablu':'Pro. Staff','SONU':'Pro. Staff','Shilanath Ray':'Pro. Staff',
+  'Ashok':'Pro. Staff','Rohit':'Pro. Staff','jitender':'Pro. Staff',
+  'Anand':'Pro. Staff','PAWAN':'Pro. Staff','KULDEEP':'Pro. Staff',
+  'BIRENDER':'Pro. Staff','SAHIB SINGH':'Pro. Staff','Manjeet':'Office Staff',
+  'RAHUL KUMAR JHA':'Office Staff','YASH':'Office Staff','DEBANJAN':'Office Staff',
+  'ADARSH BABU':'Office Staff','RAJA KUSHWAHA':'Office Staff',
+  'ANANAYA SAXENA':'Office Staff','Avantika Oli':'Own',
+  'RUPESH':'Pro. Staff','Babu Kumar':'Pro. Staff',
+  'Krishna Kumar':'Pro. Staff','Adita Kumar':'Pro. Staff',
+};
+
 function generateAttendanceExcel(records, monthName, year, holidays) {
   if (typeof XLSX === 'undefined') { toast('SheetJS not loaded', 'err'); return; }
   if (!records || !records.length) { toast('No records to export', 'err'); return; }
@@ -2360,22 +2538,6 @@ function generateAttendanceExcel(records, monthName, year, holidays) {
 
   // Holiday set — day numbers that are holidays this month
   const holidayDays = new Set(holidays || []);
-
-  const DEPT_MAP = {
-    'RAMAUTAR MAHTO':'Pro. Staff','DILIP SHARMA':'Pro. Staff','NASARUDDIN ALI':'Pro. Staff',
-    'RADHE SHYAM':'Pro. Staff','MULCHANDRA':'Pro. Staff','MD SOHIL':'Pro. Staff',
-    'MANOJ KUMAR':'Pro. Staff','RAJU':'Pro. Staff','Brijmohan':'Pro. Staff',
-    'RAGHVINDER':'Pro. Staff','Raj Kumar Tripathi':'Pro. Staff','Hemant Tiwari':'Pro. Staff',
-    'Bablu':'Pro. Staff','SONU':'Pro. Staff','Shilanath Ray':'Pro. Staff',
-    'Ashok':'Pro. Staff','Rohit':'Pro. Staff','jitender':'Pro. Staff',
-    'Anand':'Pro. Staff','PAWAN':'Pro. Staff','KULDEEP':'Pro. Staff',
-    'BIRENDER':'Pro. Staff','SAHIB SINGH':'Pro. Staff','Manjeet':'Office Staff',
-    'RAHUL KUMAR JHA':'Office Staff','YASH':'Office Staff','DEBANJAN':'Office Staff',
-    'ADARSH BABU':'Office Staff','RAJA KUSHWAHA':'Office Staff',
-    'ANANAYA SAXENA':'Office Staff','Avantika Oli':'Own',
-    'RUPESH':'Pro. Staff','Babu Kumar':'Pro. Staff',
-    'Krishna Kumar':'Pro. Staff','Adita Kumar':'Pro. Staff',
-  };
 
   function getDept(name) { return DEPT_MAP[name] || DEPT_MAP[name.toUpperCase()] || 'Pro. Staff'; }
   function isOffice(dept) { return dept === 'Office Staff'; }
