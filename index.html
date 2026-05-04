@@ -885,7 +885,7 @@ function clearPinErr() { document.getElementById('lockErr').textContent = ''; }
 // NAVIGATION
 // ════════════════════════════════════════════════════════
 function showPage(page) {
-  ['upload','review','analytics'].forEach(p => {
+  ['upload','review','analytics','settings'].forEach(p => {
     document.getElementById(p + 'Screen').classList.toggle('active', p === page);
     // Update all nav buttons across screens
     ['','2','3','4'].forEach(n => {
