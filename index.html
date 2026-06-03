@@ -1064,6 +1064,29 @@ function showPage(page) {
       if (btn) btn.classList.toggle('active', p === page);
     });
   });
+  if (page === 'review') {
+    setTimeout(() => {
+      if (reviewRecords.length === 0) {
+        // Auto-load the most recent draft
+        const draftKeys = Object.keys(localStorage)
+          .filter(k => k.startsWith('sb_att_draft_'))
+          .sort().reverse();
+        if (draftKeys.length > 0) {
+          try {
+            const d = JSON.parse(localStorage.getItem(draftKeys[0]));
+            if (d && d.records && d.records.length) {
+              reviewRecords = d.records;
+              reviewMonth = d.month;
+              reviewYear = d.year;
+              document.getElementById('reviewMonthLabel').textContent = d.month + ' ' + d.year;
+            }
+          } catch {}
+        }
+      }
+      renderReview();
+    }, 50);
+    return;
+  }
   if (page === 'settings') { setTimeout(populateSettings, 50); return; }
   if (page === 'gatepass') {
     const gs = document.getElementById('gatepassScreen');
@@ -1188,10 +1211,9 @@ async function processUpload() {
   try {
     for (let i = 0; i < toProcess.length; i++) {
       const file = toProcess[i];
-      const total = uploadedFiles.length;
-      const done = processedNames.length + i;
-      fill.style.width = Math.round(10 + (done / total) * 80) + '%';
-      lbl.textContent = 'Reading ' + (done+1) + ' of ' + total + ': ' + file.name + '…';
+      const total = toProcess.length;
+      fill.style.width = Math.round(10 + ((i + 1) / (total + 1)) * 80) + '%';
+      lbl.textContent = 'Reading ' + (i+1) + ' of ' + total + ': ' + file.name + '…';
 
       try {
         const b64 = await fileToBase64(file);
@@ -1237,8 +1259,22 @@ async function processUpload() {
       document.getElementById('processBtn').textContent = '↻ Retry ' + failedFiles.length + ' Failed';
       renderPreviews();
     } else {
-      toast('All ' + uploadedFiles.length + ' photos done — ' + allRecords.length + ' records extracted. Go to Review.', 'ok');
+      toast('All done — ' + allRecords.length + ' records extracted ✓', 'ok');
       document.getElementById('processBtn').textContent = '⟳ Extract via OCR';
+      // Auto-load into review
+      reviewRecords = allRecords;
+      reviewMonth = mon;
+      reviewYear = year;
+      document.getElementById('reviewMonthLabel').textContent = mon + ' ' + year;
+      document.getElementById('rvTotal').textContent = allRecords.length;
+      document.getElementById('rvLow').textContent = allRecords.filter(r => r.conf < 70).length;
+      document.getElementById('rvFlagged').textContent = allRecords.filter(r => r.late || r.note).length;
+      // Show a prompt to go to review
+      setTimeout(() => {
+        if (confirm(allRecords.length + ' records ready. Go to Review tab now?')) {
+          showPage('review');
+        }
+      }, 300);
     }
 
   } catch(e) {
@@ -1531,17 +1567,21 @@ function clearDraft(month, year) {
 }
 
 function loadReviewDraft() {
-  const draftKeys = Object.keys(localStorage).filter(k => k.startsWith('sb_att_draft_'));
-  const progressKeys = Object.keys(localStorage).filter(k => k.startsWith('sb_att_ocr_progress_'));
-  if (progressKeys.length > 0) {
-    try {
-      const p = JSON.parse(localStorage.getItem(progressKeys[0]));
-      if (p) toast('Partial OCR progress found for ' + p.month + ' ' + p.year + ' (' + p.processed.length + ' photos done) — upload remaining photos and click Extract to resume', 'info');
-    } catch {}
-  } else if (draftKeys.length > 0) {
+  // Load most recent draft into reviewRecords on startup
+  const draftKeys = Object.keys(localStorage)
+    .filter(k => k.startsWith('sb_att_draft_'))
+    .sort().reverse();
+  if (draftKeys.length > 0) {
     try {
       const d = JSON.parse(localStorage.getItem(draftKeys[0]));
-      if (d) toast('Review pending: ' + d.month + ' ' + d.year + ' — go to Review tab', 'info');
+      if (d && d.records && d.records.length) {
+        reviewRecords = d.records;
+        reviewMonth = d.month;
+        reviewYear = d.year;
+        const lbl = document.getElementById('reviewMonthLabel');
+        if (lbl) lbl.textContent = d.month + ' ' + d.year;
+        toast('Draft loaded: ' + d.month + ' ' + d.year + ' — ' + d.records.length + ' records', 'info');
+      }
     } catch {}
   }
 }
