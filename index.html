@@ -207,6 +207,17 @@ select:focus{border-color:var(--accent)}
 .rv-legend{display:flex;gap:12px;flex-wrap:wrap;font-size:10px;color:var(--muted);margin-top:8px;align-items:center}
 .rv-legend-dot{width:12px;height:12px;border-radius:2px;display:inline-block;margin-right:3px;vertical-align:middle}
 
+
+/* ─── FUZZY MATCHER ─── */
+.fuzzy-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:200;align-items:center;justify-content:center}
+.fuzzy-box{background:var(--surface);border-radius:var(--r);padding:24px;max-width:540px;width:93%;max-height:85vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.3)}
+.fuzzy-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.fuzzy-ocr{font-family:"DM Mono",monospace;font-size:13px;font-weight:700;color:var(--danger);min-width:160px}
+.fuzzy-arrow{color:var(--muted);font-size:16px}
+.fuzzy-sel{flex:1;min-width:180px;font-size:12px;padding:6px 9px;border:1.5px solid var(--border);border-radius:var(--rr);background:var(--surface2);color:var(--text)}
+.fuzzy-sel:focus{border-color:var(--accent);outline:none}
+.fuzzy-count{font-size:10px;color:var(--muted);min-width:60px;text-align:right}
+
 /* ─── TOAST ─── */
 #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(60px);background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:10px 18px;font-size:12px;font-weight:600;z-index:9999;transition:transform .3s;box-shadow:0 8px 28px rgba(0,0,0,.13);white-space:nowrap;max-width:90vw;text-align:center}
 #toast.show{transform:translateX(-50%) translateY(0)}
@@ -615,6 +626,23 @@ select:focus{border-color:var(--accent)}
   </div>
 </div>
 
+
+<!-- ══ FUZZY NAME MATCHER ══ -->
+<div class="fuzzy-modal" id="fuzzyModal">
+  <div class="fuzzy-box">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <h2 style="font-family:Syne,sans-serif;font-size:17px">🔍 Confirm Employee Names</h2>
+      <span style="font-size:11px;color:var(--muted)" id="fuzzySubtitle"></span>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:14px">OCR read these names — confirm the correct employee for each. Choices are saved and applied automatically next upload.</p>
+    <div id="fuzzyRows"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+      <button class="btn btn-outline" onclick="fuzzySkipAll()">Skip All (mark as unknown)</button>
+      <button class="btn btn-primary" onclick="fuzzyConfirm()">✓ Confirm & Apply</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <!-- ══ GOOGLE IDENTITY SERVICES ══ -->
@@ -674,6 +702,7 @@ const DEPT_MAP = {
   'ANANAYA SAXENA':'Office Staff','Avantika Oli':'Own',
   'RUPESH':'Pro. Staff','Babu Kumar':'Pro. Staff',
   'Krishna Kumar':'Pro. Staff','Adita Kumar':'Pro. Staff',
+  'Durga Prashad':'Pro. Staff','Rajeesh Rorm':'Pro. Staff','Parmesuwaar':'Pro. Staff',
 };
 
 const DEFAULT_EMPLOYEES_OBJ = [
@@ -695,6 +724,8 @@ const DEFAULT_EMPLOYEES_OBJ = [
   {name:'Avantika Oli',dept:'Own'},
   {name:'RUPESH',dept:'Pro. Staff'},{name:'Babu Kumar',dept:'Pro. Staff'},
   {name:'Krishna Kumar',dept:'Pro. Staff'},{name:'Adita Kumar',dept:'Pro. Staff'},
+  {name:'Durga Prashad',dept:'Pro. Staff'},{name:'Rajeesh Rorm',dept:'Pro. Staff'},
+  {name:'Parmesuwaar',dept:'Pro. Staff'},
 ];
 
 const HOLIDAYS_2026 = {
@@ -1738,6 +1769,23 @@ function toast(msg, type) {
 
 // ─── SETTINGS & CONFIG ───────────────────────────────────
 const LS_CONFIG = 'sb_att_config';
+
+// Pre-seed known name corrections for May 2026
+(function() {
+  const key = 'sb_name_map_May_2026';
+  const existing = JSON.parse(localStorage.getItem(key) || '{}');
+  const corrections = {
+    'RamAbtar': 'RAMAUTAR MAHTO', 'RAMABTAR': 'RAMAUTAR MAHTO',
+    'Sohin':    'MD SOHIL',       'SOHIN':    'MD SOHIL',
+    'Kishan':   'Krishna Kumar',  'KISHAN':   'Krishna Kumar',
+  };
+  let changed = false;
+  Object.entries(corrections).forEach(([ocr, correct]) => {
+    if (!existing[ocr]) { existing[ocr] = correct; existing[ocr.toUpperCase()] = correct; changed = true; }
+  });
+  if (changed) localStorage.setItem(key, JSON.stringify(existing));
+})();
+
 const DEFAULT_EMPLOYEES = [
   'Ramesh Kumar','Priya Sharma','Anil Verma','Sunita Patel','Vijay Singh',
   'Meena Joshi','Rakesh Gupta','Kavita Nair','Deepak Rao','Anita Desai',
@@ -2083,23 +2131,26 @@ async function processUpload() {
   if (btn) { btn.disabled = false; btn.textContent = failedFiles.length ? '↻ Retry '+failedFiles.length+' Failed' : '⟳ Extract via OCR'; }
 
   localStorage.removeItem(draftKey);
-  saveDraft(mon, year, allRecords);
-  upsertHistory({month:mon, year, records:allRecords.length, flagged:allRecords.filter(r=>r.conf<70).length, status:'draft', uploaded:new Date().toLocaleDateString('en-IN')});
-  renderHistory();
 
-  // Auto-load into review
-  reviewRecords = allRecords; reviewMonth = mon; reviewYear = year;
-  const lbl2 = document.getElementById('reviewMonthLabel');
-  if (lbl2) lbl2.textContent = mon + ' ' + year;
+  // Run fuzzy name matcher before saving
+  runFuzzyMatcher(allRecords, mon, year, function(finalRecords) {
+    saveDraft(mon, year, finalRecords);
+    upsertHistory({month:mon, year, records:finalRecords.length, flagged:finalRecords.filter(r=>r.conf<70).length, status:'draft', uploaded:new Date().toLocaleDateString('en-IN')});
+    renderHistory();
 
-  if (failedFiles.length) {
-    toast(allRecords.length+' records. '+failedFiles.length+' failed — click Retry','info');
-    uploadedFiles = uploadedFiles.filter(f => failedFiles.find(ff=>ff.name===f.name));
-    renderPreviews();
-  } else {
-    toast('All done — '+allRecords.length+' records extracted ✓','ok');
-    setTimeout(() => { if (confirm(allRecords.length+' records ready. Go to Review?')) showPage('review'); }, 300);
-  }
+    reviewRecords = finalRecords; reviewMonth = mon; reviewYear = year;
+    const lbl2 = document.getElementById('reviewMonthLabel');
+    if (lbl2) lbl2.textContent = mon + ' ' + year;
+
+    if (failedFiles.length) {
+      toast(finalRecords.length+' records. '+failedFiles.length+' failed — click Retry','info');
+      uploadedFiles = uploadedFiles.filter(f => failedFiles.find(ff=>ff.name===f.name));
+      renderPreviews();
+    } else {
+      toast('✓ All done — '+finalRecords.length+' records extracted!','ok');
+      setTimeout(() => { if (confirm(finalRecords.length+' records ready. Go to Review?')) showPage('review'); }, 300);
+    }
+  });
 }
 
 function loadReviewDraft() {
@@ -2298,6 +2349,119 @@ function renderHistory() {
 
 function updateMonthChip() {
   if (typeof updateMonthStatus === 'function') updateMonthStatus();
+}
+
+
+// ════════════════════════════════════════════════════════
+// FUZZY NAME MATCHING
+// ════════════════════════════════════════════════════════
+function nameMapKey(month, year) { return 'sb_name_map_' + month + '_' + year; }
+
+function getNameMap(month, year) {
+  try { return JSON.parse(localStorage.getItem(nameMapKey(month, year)) || '{}'); } catch { return {}; }
+}
+
+function saveNameMap(month, year, map) {
+  localStorage.setItem(nameMapKey(month, year), JSON.stringify(map));
+}
+
+function fuzzyScore(a, b) {
+  a = a.toLowerCase().replace(/[^a-z]/g,'');
+  b = b.toLowerCase().replace(/[^a-z]/g,'');
+  if (a === b) return 0;
+  if (b.includes(a) || a.includes(b)) return 0.1;
+  const aWords = a.split(/\s+/), bWords = b.split(/\s+/);
+  const wordMatch = aWords.filter(w => w.length > 2 && bWords.some(bw => bw.startsWith(w.slice(0,4)) || w.startsWith(bw.slice(0,4)))).length;
+  let charMatch = 0;
+  for (let i = 0; i < Math.min(a.length, b.length); i++) if (b.includes(a[i])) charMatch++;
+  return 1 - (charMatch / Math.max(a.length, b.length)) - (wordMatch * 0.2);
+}
+
+function getBestMatches(ocrName, empList, topN) {
+  return empList.map(emp => ({ emp, score: fuzzyScore(ocrName, emp) }))
+    .sort((a,b) => a.score - b.score).slice(0, topN || 6);
+}
+
+function applyNameMap(records, nameMap, empList) {
+  const empSet = new Set(empList.map(e => e.toUpperCase()));
+  records.forEach(r => {
+    if (!r.emp) return;
+    const upper = r.emp.toUpperCase();
+    if (empSet.has(upper)) {
+      const canonical = empList.find(e => e.toUpperCase() === upper);
+      if (canonical) r.emp = canonical;
+      return;
+    }
+    const mapped = nameMap[r.emp] || nameMap[upper];
+    if (mapped && mapped !== '__UNKNOWN__') { r.emp = mapped; }
+    else if (mapped === '__UNKNOWN__') { r.unknownEmp = true; r.note = (r.note?r.note+'; ':'')+'Unknown: '+r.emp; }
+  });
+}
+
+function runFuzzyMatcher(records, month, year, callback) {
+  const empList = CONFIG.EMPLOYEES || DEFAULT_EMPLOYEES;
+  const nameMap = getNameMap(month, year);
+  const empSet  = new Set(empList.map(e => e.toUpperCase()));
+
+  const unmapped = {};
+  records.forEach(r => {
+    if (!r.emp) return;
+    const upper = r.emp.toUpperCase();
+    if (!empSet.has(upper) && !nameMap[r.emp] && !nameMap[upper]) {
+      unmapped[r.emp] = (unmapped[r.emp] || 0) + 1;
+    }
+  });
+
+  const unknownNames = Object.keys(unmapped);
+  if (!unknownNames.length) { applyNameMap(records, nameMap, empList); callback(records); return; }
+
+  const modal = document.getElementById('fuzzyModal');
+  const rowsDiv = document.getElementById('fuzzyRows');
+  document.getElementById('fuzzySubtitle').textContent = unknownNames.length + ' name(s) need confirmation';
+
+  rowsDiv.innerHTML = unknownNames.map(ocrName => {
+    const matches = getBestMatches(ocrName, empList, 6);
+    const opts = matches.map(m =>
+      '<option value="' + m.emp.replace(/"/g,'&quot;') + '"' +
+      (m.score < 0.25 ? ' style="font-weight:700"' : '') + '>' +
+      m.emp + (m.score < 0.15 ? ' ✓' : '') + '</option>'
+    ).join('');
+    return '<div class="fuzzy-row" data-ocr="' + ocrName.replace(/"/g,'&quot;') + '">' +
+      '<div class="fuzzy-ocr">' + ocrName + '</div>' +
+      '<div class="fuzzy-arrow">→</div>' +
+      '<select class="fuzzy-sel">' +
+        '<option value="__UNKNOWN__">— Mark as unknown —</option>' + opts +
+      '</select>' +
+      '<div class="fuzzy-count">' + unmapped[ocrName] + ' record(s)</div>' +
+    '</div>';
+  }).join('');
+
+  modal.style.display = 'flex';
+  window._fuzzyCallback = { records, month, year, nameMap, empList, callback };
+}
+
+function fuzzyConfirm() {
+  const { records, month, year, nameMap, empList, callback } = window._fuzzyCallback;
+  document.querySelectorAll('#fuzzyRows .fuzzy-row').forEach(row => {
+    const mapped = row.querySelector('.fuzzy-sel').value;
+    nameMap[row.dataset.ocr] = mapped;
+    nameMap[row.dataset.ocr.toUpperCase()] = mapped;
+  });
+  saveNameMap(month, year, nameMap);
+  document.getElementById('fuzzyModal').style.display = 'none';
+  applyNameMap(records, nameMap, empList);
+  callback(records);
+}
+
+function fuzzySkipAll() {
+  const { records, month, year, nameMap, empList, callback } = window._fuzzyCallback;
+  document.querySelectorAll('#fuzzyRows .fuzzy-row').forEach(row => {
+    nameMap[row.dataset.ocr] = '__UNKNOWN__';
+  });
+  saveNameMap(month, year, nameMap);
+  document.getElementById('fuzzyModal').style.display = 'none';
+  applyNameMap(records, nameMap, empList);
+  callback(records);
 }
 
 </script>
