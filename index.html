@@ -375,6 +375,9 @@ select:focus{border-color:var(--accent)}
         <button class="btn btn-outline" style="font-size:11px" onclick="rvFilter('all')" id="rfAll">All</button>
         <button class="btn btn-outline" style="font-size:11px" onclick="rvFilter('low')" id="rfLow">⚠ Low Conf</button>
         <button class="btn btn-outline" style="font-size:11px" onclick="rvFilter('flag')" id="rfFlag">🚩 Flagged</button>
+        <button class="btn btn-outline" style="font-size:11px" onclick="showNameMap()">🔤 Name Map</button>
+        <button class="btn btn-outline" style="font-size:11px" onclick="downloadExcel()">⬇ Excel</button>
+        <button class="btn btn-outline" style="font-size:11px;color:var(--warn);border-color:var(--warn)" onclick="showReviewMgmt()">🗂 Manage</button>
         <button class="btn btn-green" onclick="finaliseAndSave()">✓ Approve &amp; Save to Sheets</button>
       </div>
     </div>
@@ -643,6 +646,23 @@ select:focus{border-color:var(--accent)}
   </div>
 </div>
 
+
+<!-- ══ NAME MAP MODAL ══ -->
+<div id="nameMapModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;align-items:center;justify-content:center">
+  <div style="background:var(--surface);border-radius:var(--r);padding:24px;max-width:500px;width:93%;max-height:80vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.3)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h2 style="font-family:Syne,sans-serif;font-size:17px">🔤 Name Mappings</h2>
+      <button onclick="document.getElementById('nameMapModal').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted)">✕</button>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:14px">OCR name corrections saved for this month. These apply automatically on each upload.</p>
+    <div id="nameMapRows"></div>
+    <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-outline" style="color:var(--danger);border-color:var(--danger)" onclick="clearNameMap()">🗑 Clear All Mappings</button>
+      <button class="btn btn-primary" onclick="document.getElementById('nameMapModal').style.display='none'">Done</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <!-- ══ GOOGLE IDENTITY SERVICES ══ -->
@@ -661,7 +681,7 @@ const CONFIG = {
 };
 
 // Demo mode — set true if no real Sheets config yet
-let DEMO_MODE = true; // updated after loadStoredConfig()
+let DEMO_MODE = false; // disabled — using real Sheets config
 
 // ════════════════════════════════════════════════════════
 // LOGO (shared — set once from launcher or inline)
@@ -1029,9 +1049,7 @@ function processUpload() {
         document.getElementById('draftBtn').disabled = false;
         document.getElementById('processBtn').disabled = false;
 
-        // Generate demo OCR records and save to localStorage as draft
-        const draftRecords = generateDemoOCRRecords(mon, year);
-        saveDraftToLocalStorage(mon, year, draftRecords);
+        // (demo data removed)
 
         // Add to history
         const existing = historyData.findIndex(h => h.month === mon && h.year === year);
@@ -1054,46 +1072,7 @@ function processUpload() {
 }
 
 // Demo OCR record generation
-function generateDemoOCRRecords(month, year) {
-  const names = ['Ramesh Kumar','Priya Sharma','Anil Verma','Sunita Patel','Vijay Singh',
-                  'Meena Joshi','Rakesh Gupta','Kavita Nair','Deepak Rao','Anita Desai'];
-  const records = [];
-  let id = 1;
-  const daysInMonth = new Date(year, MONTHS.indexOf(month) + 1, 0).getDate();
-  for (let d = 1; d <= Math.min(daysInMonth, 5); d++) {  // 5 days for demo
-    const dateObj = new Date(year, MONTHS.indexOf(month), d);
-    const dayName = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dateObj.getDay()];
-    if (dateObj.getDay() === 0) continue; // skip Sundays for demo
-    names.forEach(name => {
-      const absent = Math.random() < 0.05;
-      const late = !absent && Math.random() < 0.15;
-      const ot = !absent && Math.random() < 0.1;
-      const conf = absent ? 90 : Math.floor(Math.random() * 60) + 40;
-      const inH = late ? (10 + Math.floor(Math.random() * 2)) : 9;
-      const inM = Math.floor(Math.random() * 30);
-      const outH = ot ? (20 + Math.floor(Math.random() * 2)) : (17 + Math.floor(Math.random() * 2));
-      const outM = Math.floor(Math.random() * 60);
-      const hours = absent ? 0 : +(outH + outM / 60 - inH - inM / 60).toFixed(1);
-      const status = absent ? 'Absent' : late ? 'Late' : ot ? 'Overtime' : 'Present';
-      const dateStr = String(d).padStart(2,'0') + ' ' + SHORT_MONTHS[MONTHS.indexOf(month)] + ' ' + year;
-      records.push({
-        id: id++,
-        emp: name,
-        date: dateStr,
-        day: dayName,
-        inTime: absent ? '' : (String(inH).padStart(2,'0') + ':' + String(inM).padStart(2,'0')),
-        outTime: absent ? '' : (String(outH).padStart(2,'0') + ':' + String(outM).padStart(2,'0')),
-        hours: absent ? '—' : String(hours),
-        status,
-        late: late,
-        note: '',
-        ot: ot,
-        conf: absent ? 88 : conf
-      });
-    });
-  }
-  return records;
-}
+function generateDemoOCRRecords(month, year) { return []; }
 
 // ════════════════════════════════════════════════════════
 // HISTORY — load from Sheets or demo cache
@@ -1174,8 +1153,14 @@ function loadMonthForReview(month, year) {
   } else if (sheetsReady) {
     loadMonthFromSheets(month, year).then(() => showPage('review'));
   } else {
-    // Demo fallback
-    reviewRecords = generateDemoOCRRecords(month, year);
+    // Load from local draft if available
+    const draftKeys2 = Object.keys(localStorage).filter(k=>k.startsWith('sb_att_draft_')).sort().reverse();
+    if (draftKeys2.length) {
+      try {
+        const d2 = JSON.parse(localStorage.getItem(draftKeys2[0]));
+        if (d2 && d2.records) { reviewRecords=d2.records; reviewMonth=d2.month; reviewYear=d2.year; }
+      } catch {}
+    }
     document.getElementById('reviewMonthLabel').textContent = month + ' ' + year;
     showPage('review');
   }
@@ -1618,12 +1603,7 @@ function simulateFinalise(month, year) {
 // ════════════════════════════════════════════════════════
 async function loadAndRenderAnalytics() {
   document.getElementById('analyticsSync').textContent = 'loading…';
-  if (DEMO_MODE) {
-    analyticsData = generateDemoAnalytics();
-    renderAnalytics();
-    document.getElementById('analyticsSync').textContent = 'Demo data — connect Sheets for live data';
-    return;
-  }
+  // (demo mode disabled)
   await refreshAnalytics();
 }
 
@@ -1643,26 +1623,7 @@ async function refreshAnalytics() {
   } catch(e) { toast('Could not load analytics', 'err'); }
 }
 
-function generateDemoAnalytics() {
-  const employees = ['Ramesh Kumar','Priya Sharma','Anil Verma','Sunita Patel','Vijay Singh','Meena Joshi','Rakesh Gupta','Kavita Nair'];
-  const months = [['October',2024],['November',2024],['December',2024],['January',2025],['February',2025],['March',2025],['April',2025],['May',2025],['June',2025]];
-  const data = [];
-  employees.forEach(emp => {
-    const lateEmployee = ['Anil Verma','Meena Joshi'].includes(emp);
-    months.forEach(([month, year]) => {
-      data.push({
-        emp, month, year,
-        attRate: Math.round((92 + Math.random() * 8) * 10) / 10,
-        avgHours: Math.round((8.2 + Math.random() * 1.5) * 10) / 10,
-        lateCount: lateEmployee ? Math.floor(Math.random() * 5) + 2 : Math.floor(Math.random() * 2),
-        otDays: Math.floor(Math.random() * 8),
-        sundays: Math.floor(Math.random() * 3),
-        notes: lateEmployee && Math.random() > 0.5 ? 'Recurring late arrival' : ''
-      });
-    });
-  });
-  return data;
-}
+function generateDemoAnalytics() { return []; }
 
 function renderAnalytics() {
   if (!analyticsData) return;
@@ -2462,6 +2423,198 @@ function fuzzySkipAll() {
   document.getElementById('fuzzyModal').style.display = 'none';
   applyNameMap(records, nameMap, empList);
   callback(records);
+}
+
+
+// ── Excel download ──
+function downloadExcel() {
+  if (!reviewRecords.length) { toast('No records to export', 'err'); return; }
+  if (typeof XLSX === 'undefined') { toast('SheetJS not loaded', 'err'); return; }
+  const hols = (typeof getHolidaysForMonth === 'function') ? getHolidaysForMonth(reviewMonth, reviewYear) : [];
+  generateAttendanceExcel(reviewRecords, reviewMonth, reviewYear, hols);
+}
+
+// ── Name map viewer ──
+function showNameMap() {
+  const modal = document.getElementById('nameMapModal');
+  const label = document.getElementById('reviewMonthLabel').textContent;
+  const parts = label.split(' '), month = parts[0], year = +parts[1];
+  const map = (typeof getNameMap === 'function') ? getNameMap(month, year) : {};
+  const rows = document.getElementById('nameMapRows');
+  const entries = Object.entries(map).filter(([k]) => k === k.toLowerCase() || !/^[A-Z]+$/.test(k));
+  if (!entries.length) {
+    rows.innerHTML = '<div style="font-size:12px;color:var(--muted);text-align:center;padding:20px">No mappings saved for ' + month + ' ' + year + '</div>';
+  } else {
+    rows.innerHTML = '<table style="width:100%;font-size:12px;border-collapse:collapse">' +
+      '<thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid var(--border)">OCR Read</th>' +
+      '<th style="text-align:left;padding:6px;border-bottom:1px solid var(--border)">Mapped To</th>' +
+      '<th style="padding:6px;border-bottom:1px solid var(--border)"></th></tr></thead><tbody>' +
+      entries.map(([ocr, mapped]) =>
+        '<tr><td style="padding:6px;font-family:DM Mono;color:var(--danger)">' + ocr + '</td>' +
+        '<td style="padding:6px;font-weight:600">' + (mapped === '__UNKNOWN__' ? '<span style="color:var(--muted)">Unknown</span>' : mapped) + '</td>' +
+        '<td style="padding:6px;text-align:center"><button data-m="' + month + '" data-y="' + year + '" data-o="' + encodeURIComponent(ocr) + '" onclick="deleteNM(this)" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px">\u2715</button></td>' +
+        '</tr>'
+      ).join('') + '</tbody></table>';
+  }
+  modal.style.display = 'flex';
+}
+
+function deleteNameMapping(month, year, ocr) {
+  if (typeof getNameMap !== 'function') return;
+  const map = getNameMap(month, year);
+  delete map[ocr]; delete map[ocr.toUpperCase()];
+  saveNameMap(month, year, map);
+  showNameMap();
+  toast('Mapping removed', 'ok');
+}
+
+function deleteNM(btn) { deleteNameMapping(btn.dataset.m, btn.dataset.y, decodeURIComponent(btn.dataset.o)); }
+function deleteNameMappingAttr(btn) { deleteNameMapping(btn.dataset.month, btn.dataset.year, btn.dataset.ocr); }
+
+function clearNameMap() {
+  const label = document.getElementById('reviewMonthLabel').textContent;
+  const parts = label.split(' '), month = parts[0], year = +parts[1];
+  if (!confirm('Clear all name mappings for ' + month + ' ' + year + '?')) return;
+  localStorage.removeItem('sb_name_map_' + month + '_' + year);
+  document.getElementById('nameMapModal').style.display = 'none';
+  toast('Name mappings cleared', 'ok');
+}
+
+// ── Excel generation ──
+function generateAttendanceExcel(records, monthName, year, holidays) {
+  if (typeof XLSX === 'undefined') { toast('SheetJS not loaded', 'err'); return; }
+  if (!records || !records.length) { toast('No records to export', 'err'); return; }
+
+  const MONTH_NUMS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const DAY_NAMES=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+  if (!monthName) { try { const d=new Date(records[0].date); monthName=MONTH_NUMS[d.getMonth()]; year=d.getFullYear(); } catch{} }
+  if (!year) year = new Date().getFullYear();
+  const monthIdx = MONTH_NUMS.indexOf(monthName);
+  if (monthIdx === -1) { toast('Invalid month: '+monthName,'err'); return; }
+  const daysInMonth = new Date(year, monthIdx+1, 0).getDate();
+  const holidaySet = new Set(holidays||[]);
+
+  function dow(d) { const day=new Date(year,monthIdx,d).getDay(); return day===0?'Sun':DAY_NAMES[day-1]; }
+  function isOffice(dept) { return dept==='Office Staff'; }
+  function isOwn(dept) { return dept==='Own'; }
+  function getDept(name) { return (typeof DEPT_MAP!=='undefined'&&(DEPT_MAP[name]||DEPT_MAP[name.toUpperCase()]))||'Pro. Staff'; }
+
+  // Build emp→day lookup
+  const empOrder=[], empDay={};
+  records.forEach(r => {
+    const name=(r.emp||'').trim(); if(!name)return;
+    let dn; try{const d=new Date(r.date);dn=isNaN(d.getDate())?parseInt(r.date):d.getDate();if(!dn||dn<1||dn>31)return;}catch{return;}
+    if(!empOrder.includes(name)) empOrder.push(name);
+    empDay[name+'|'+dn]={inTime:r.inTime||'',outTime:r.outTime||'',status:r.status||'Present'};
+  });
+  if(!empOrder.length){toast('No valid records','err');return;}
+
+  const DAY_COL_START=5, LAST_DAY_COL=DAY_COL_START+daysInMonth-1, SUM_START=LAST_DAY_COL+2;
+  const SUM_LABELS=['T. P','W/O','W/O','T. H','T. L','T. A','T. W.','T.','Over'];
+  const SUM_KEYS=['P','W/S','SUN','H','L','A','Day','Day','Time'];
+
+  function colLetter(i){let r='',n=i+1;while(n>0){r=String.fromCharCode((n-1)%26+65)+r;n=Math.floor((n-1)/26);}return r;}
+  function addr(row0,col0){return colLetter(col0)+(row0+1);}
+
+  const wb=XLSX.utils.book_new(), ws={};
+  function sc(row,col,val,fmt){const a=addr(row,col);ws[a]={v:val,t:typeof val==='number'?'n':'s'};if(fmt)ws[a].z=fmt;}
+  function sf(row,col,formula,fmt){const a=addr(row,col);ws[a]={f:formula,t:'n'};if(fmt)ws[a].z=fmt;}
+
+  sc(0,0,'09:00');sc(0,1,'11:30');sc(0,4,'00:30');sc(0,5,'10:00');
+  sc(1,0,'08:30');sc(1,1,'08:00');
+  sc(1,4,'STA');
+  for(let d=1;d<=daysInMonth;d++) sc(1,DAY_COL_START+d-1,dow(d));
+  SUM_LABELS.forEach((l,i)=>sc(1,SUM_START+i,l));
+  sc(2,0,'S.No');sc(2,1,'Name');sc(2,2,'Depatment');sc(2,3,'Working Time');sc(2,4,'STA');
+  for(let d=1;d<=daysInMonth;d++) sc(2,DAY_COL_START+d-1,d,'0');
+  SUM_KEYS.forEach((k,i)=>sc(2,SUM_START+i,k));
+
+  let currentRow=3;
+  empOrder.forEach((emp,ei)=>{
+    const inR=currentRow,outR=inR+1,otR=inR+2,stsR=inR+3;
+    const dept=getDept(emp),office=isOffice(dept),own=isOwn(dept);
+    const wt=office?'09:00':own?'':'08:30';
+    const otRef=office?'$A$1':'$A$2';
+
+    sc(inR,0,String(ei+1).padStart(2,'0'));sc(inR,1,emp.toUpperCase());sc(inR,2,dept);sc(inR,3,wt);
+    sc(inR,4,'IN');sc(outR,4,'OUT');sc(otR,4,'OT');sc(stsR,4,'STS');
+
+    // Build STS values with absent sandwich rule
+    const stsValues={};
+    for(let d=1;d<=daysInMonth;d++){
+      const dn=dow(d),isSun=(dn==='Sun'),isHol=holidaySet.has(d),data=empDay[emp+'|'+d];
+      let sts='';
+      if(isHol){sts='H';}
+      else if(isSun){if(!office&&!own&&data&&data.inTime&&!['','Sun','A','L','H'].includes(data.inTime))sts='W/S';else sts='Sun';}
+      else if(!data||data.status==='Absent'||data.inTime==='A'||(!data.inTime&&!data.outTime))sts='A';
+      else if(['L','M'].includes(data.inTime))sts='L';
+      else sts=own?'':'P';
+      stsValues[d]=sts;
+    }
+    // Sandwich rule
+    for(let d=1;d<=daysInMonth;d++){
+      if(dow(d)==='Sun'&&stsValues[d]==='Sun'){
+        const sb=d>1?stsValues[d-1]:null, sa=d<daysInMonth?stsValues[d+1]:null;
+        if((sb==='A'||sb===null)&&(sa==='A'||sa===null)&&(sb==='A'||sa==='A'))stsValues[d]='A';
+      }
+    }
+
+    for(let d=1;d<=daysInMonth;d++){
+      const col=DAY_COL_START+d-1,dn=dow(d),isSun=(dn==='Sun'),isHol=holidaySet.has(d);
+      const data=empDay[emp+'|'+d],sts=stsValues[d];
+      const inA=addr(inR,col),outA=addr(outR,col);
+      let inVal='',outVal='',otFormula=null;
+      if(isHol){inVal=outVal='H';}
+      else if(sts==='A'&&isSun){inVal=outVal='A';}
+      else if(sts==='W/S'){inVal=data.inTime;outVal=data.outTime||'';otFormula=outA+'-'+inA+'-$E$1';}
+      else if(sts==='Sun'){inVal=outVal='Sun';}
+      else if(sts==='A'){inVal=outVal='A';}
+      else if(sts==='H'){inVal=outVal='H';}
+      else if(sts==='L'){inVal=outVal='L';}
+      else if(data&&data.inTime){inVal=data.inTime;outVal=data.outTime||'';if(!own)otFormula=outA+'-'+inA+'-'+otRef;}
+      sc(inR,col,inVal);sc(outR,col,outVal);
+      if(otFormula)sf(otR,col,otFormula,'h:mm');else sc(otR,col,'00:00','h:mm');
+      sc(stsR,col,sts);
+    }
+
+    // Summary
+    const stsRange=colLetter(DAY_COL_START)+(stsR+1)+':'+colLetter(LAST_DAY_COL)+(stsR+1);
+    const otRange=colLetter(DAY_COL_START)+(otR+1)+':'+colLetter(LAST_DAY_COL)+(otR+1);
+    const s=i=>colLetter(SUM_START+i);
+    for(let i=0;i<6;i++) sf(inR,SUM_START+i,'COUNTIF('+stsRange+','+s(i)+'3)');
+    sf(inR,SUM_START+6,'SUM('+s(0)+(inR+1)+':'+s(4)+(inR+4)+')');
+    sf(inR,SUM_START+7,'SUM('+s(0)+(inR+1)+':'+s(5)+(inR+4)+')');
+    sf(inR,SUM_START+8,'SUM('+otRange+')','h:mm');
+
+    // GP row
+    const gpAlloc=(typeof getGPAllocationForEmployee==='function')?getGPAllocationForEmployee(emp,monthName,year):[];
+    let gpRowOffset=0;
+    if(gpAlloc&&gpAlloc.length){
+      const gpR=stsR+1; gpRowOffset=1;
+      sc(gpR,4,'GP');
+      for(let d=1;d<=daysInMonth;d++){
+        const dayAlloc=gpAlloc.find(a=>{try{return new Date(a.date).getDate()===d;}catch{return false;}});
+        if(dayAlloc&&dayAlloc.gpUsed>0){
+          const h=Math.floor(dayAlloc.gpUsed),m=Math.round((dayAlloc.gpUsed-h)*60);
+          sc(gpR,DAY_COL_START+d-1,h+':'+(m<10?'0':'')+m);
+        }
+      }
+    }
+    currentRow+=4+gpRowOffset;
+  });
+
+  ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:currentRow,c:SUM_START+SUM_LABELS.length}});
+  const cols=[{wch:4.5},{wch:21},{wch:9.7},{wch:10.4},{wch:3.9}];
+  for(let d=0;d<daysInMonth;d++)cols.push({wch:5.8});
+  cols.push({wch:2});for(let i=0;i<9;i++)cols.push({wch:5.5});
+  ws['!cols']=cols;
+  ws['!freeze']={xSplit:5,ySplit:3,topLeftCell:'F4',activePane:'bottomRight',state:'frozen'};
+
+  const sheetLabel=monthName.slice(0,3)+'-'+year;
+  XLSX.utils.book_append_sheet(wb,ws,sheetLabel);
+  XLSX.writeFile(wb,'Attendance_'+monthName+'_'+year+'.xlsx');
+  toast('Downloaded: Attendance_'+monthName+'_'+year+'.xlsx','ok');
 }
 
 </script>
