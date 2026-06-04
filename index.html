@@ -308,6 +308,7 @@ select:focus{border-color:var(--accent)}
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-outline" onclick="clearFiles()">✕ Clear</button>
           <button class="btn btn-outline" id="draftBtn" onclick="dlDraft()" disabled>⬇ Draft</button>
+          <button class="btn btn-outline" style="color:var(--danger);border-color:var(--danger)" onclick="clearMonthData()" title="Delete all OCR data for selected month">🗑 Clear Month</button>
           <button class="btn btn-primary" id="processBtn" onclick="processUpload()" disabled>⟳ Extract via OCR</button>
         </div>
       </div>
@@ -1817,10 +1818,18 @@ function testConnection() {
 }
 
 function clearAllDrafts() {
-  if(!confirm('Clear all local draft data?'))return;
-  Object.keys(localStorage).filter(k=>k.startsWith('sb_att_')||k.startsWith('sb_gp_')).forEach(k=>localStorage.removeItem(k));
-  reviewRecords=[];
-  toast('All drafts cleared','ok');
+  if(!confirm('This will clear all OCR drafts and gate pass data for all months. Your Settings (API key, URL, PINs, employee list) will NOT be affected.'))return;
+  // Only clear drafts — never touch config
+  const toRemove = Object.keys(localStorage).filter(k =>
+    (k.startsWith('sb_att_draft_') ||
+     k.startsWith('sb_att_ocr_progress_') ||
+     k.startsWith('sb_att_history') ||
+     k.startsWith('sb_gp_'))
+    && k !== LS_CONFIG  // never touch settings
+  );
+  toRemove.forEach(k => localStorage.removeItem(k));
+  reviewRecords = [];
+  toast('Cleared '+toRemove.length+' draft items. Settings preserved ✓', 'ok');
 }
 
 
@@ -2249,6 +2258,46 @@ function addNewEmployee(){
 }
 function saveEmployees(){
   const emps=getEmployeeObjects();saveEmployeeObjects(emps);toast('Saved '+emps.length+' employees ✓','ok');
+}
+
+
+function clearMonthData() {
+  const mon  = document.getElementById('monthSel')?.value || MONTHS[new Date().getMonth()];
+  const year = document.getElementById('yearSel')?.value  || new Date().getFullYear();
+  if (!confirm('Clear all OCR data for ' + mon + ' ' + year + '? This cannot be undone.')) return;
+  localStorage.removeItem('sb_att_draft_'        + mon + '_' + year);
+  localStorage.removeItem('sb_att_ocr_progress_' + mon + '_' + year);
+  localStorage.removeItem('sb_gp_'               + mon + '_' + year);
+  localStorage.removeItem('sb_gp_allocation_'    + mon + '_' + year);
+  // Also clear from reviewRecords if same month loaded
+  if (reviewMonth === mon && +reviewYear === +year) reviewRecords = [];
+  updateMonthStatus();
+  toast('Cleared all data for ' + mon + ' ' + year + ' ✓', 'ok');
+}
+
+
+// ── Aliases & missing stubs ──
+function saveDraft(month, year, records) {
+  saveDraftToLocalStorage(month, year, records);
+}
+
+function upsertHistory(entry) {
+  try {
+    const key = 'sb_att_history';
+    const hist = JSON.parse(localStorage.getItem(key) || '[]');
+    const idx = hist.findIndex(h => h.month === entry.month && +h.year === +entry.year);
+    if (idx >= 0) hist[idx] = { ...hist[idx], ...entry };
+    else hist.unshift(entry);
+    localStorage.setItem(key, JSON.stringify(hist));
+  } catch(e) { console.warn('upsertHistory:', e); }
+}
+
+function renderHistory() {
+  if (typeof loadHistory === 'function') loadHistory();
+}
+
+function updateMonthChip() {
+  if (typeof updateMonthStatus === 'function') updateMonthStatus();
 }
 
 </script>
