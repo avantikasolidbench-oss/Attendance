@@ -460,13 +460,13 @@ select:focus{border-color:var(--accent)}
 <!-- ══ SETTINGS SCREEN ══ -->
 <div id="settingsScreen" class="screen">
   <header>
-    <div class="hdr-logo"><img src="LOGO_PLACEHOLDER_SETTINGS" alt="SolidBench"></div>
+    <div class="wordmark-hdr">solid<span>bench</span></div>
     <div class="hdr-nav">
       <button class="nav-btn" id="nav4-upload" onclick="showPage('upload')">📤 Upload</button>
       <button class="nav-btn" id="nav4-review" onclick="showPage('review')">🔍 Review</button>
       <button class="nav-btn" id="nav4-analytics" onclick="showPage('analytics')">📊 Analytics</button>
-      <button class="nav-btn active" id="nav4-gatepass" onclick="showPage('gatepass')">🛡 Gate Pass</button>
-      <button class="nav-btn" id="nav4-settings" onclick="showPage('settings')">⚙ Settings</button>
+      <button class="nav-btn" id="nav4-gatepass" onclick="showPage('gatepass')">🛡 Gate Pass</button>
+      <button class="nav-btn active" id="nav4-settings" onclick="showPage('settings')">⚙ Settings</button>
     </div>
     <div class="hdr-right">
       <span class="role-badge" id="roleLabel4">Finance Manager</span>
@@ -474,116 +474,91 @@ select:focus{border-color:var(--accent)}
     </div>
   </header>
   <div class="main">
-    <div class="page-hdr">
-      <h1>Settings</h1>
-      <p>Configure Google Sheets and PINs. All values saved to this browser's localStorage — nothing hardcoded.</p>
-    </div>
+    <div class="page-hdr"><h1>Settings</h1><p>Configure integrations, employees and access PINs.</p></div>
 
+    <!-- Google Sheets -->
     <div class="card" style="margin-bottom:14px">
-      <div class="settings-section">
-        <h3>🔗 Google Sheets Integration</h3>
-        <div class="settings-grid">
-          <div class="sf full">
-            <label>OAuth Client ID</label>
-            <input type="text" id="cfg-clientId" placeholder="xxxx.apps.googleusercontent.com">
-            <div class="hint">Create at console.cloud.google.com → APIs → Credentials → OAuth 2.0 (Web). Add your GitHub Pages URL as an authorised origin.</div>
-          </div>
-          <div class="sf full">
-            <label>Spreadsheet ID</label>
-            <input type="text" id="cfg-spreadsheetId" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms">
-            <div class="hint">From the Sheet URL: /spreadsheets/d/<b>THIS_PART</b>/edit</div>
-          </div>
-          <div class="sf">
-            <label>Analytics Sheet Name</label>
-            <input type="text" id="cfg-analyticsSheet" placeholder="_Analytics">
-            <div class="hint">Auto-created on first save. Leave as _Analytics.</div>
-          </div>
-          <div class="sf" style="justify-content:flex-end">
-            <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:flex-end">
-              <button class="btn btn-primary" onclick="saveSettings()">💾 Save</button>
-              <button class="btn btn-outline" onclick="testSheets()">🔗 Test</button>
-              <button class="btn btn-blue" onclick="connectGoogle()">Connect Google →</button>
-            </div>
-          </div>
-        </div>
-        <div id="testResult" class="test-result"></div>
+      <h3 style="margin-bottom:12px">Google Sheets</h3>
+      <div class="sf full" style="margin-bottom:10px">
+        <label>Apps Script Web App URL</label>
+        <input type="text" id="cfg-webAppUrl" placeholder="https://script.google.com/macros/s/…/exec">
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-primary" onclick="saveSettings()">💾 Save</button>
+        <button class="btn btn-outline" onclick="testConnection()" id="testConnBtn">🔌 Test Connection</button>
+        <span id="connStatus" style="font-size:11px;color:var(--muted)"></span>
       </div>
     </div>
 
+    <!-- Anthropic API -->
     <div class="card" style="margin-bottom:14px">
-      <div class="settings-section">
-        <h3>🔐 Access PINs <span style="font-size:10px;font-weight:500;color:var(--muted)">(Super Admin only)</span></h3>
-        <div class="settings-grid">
-          <div class="sf">
-            <label>Finance Manager PIN</label>
-            <input type="password" id="cfg-pinFinance" placeholder="Leave blank to keep current" maxlength="6">
-          </div>
-          <div class="sf">
-            <label>Super Admin PIN</label>
-            <input type="password" id="cfg-pinAdmin" placeholder="Leave blank to keep current" maxlength="6">
-          </div>
+      <h3 style="margin-bottom:12px">Anthropic API (OCR)</h3>
+      <div class="sf full" style="margin-bottom:10px">
+        <label>API Key</label>
+        <input type="password" id="cfg-apiKey" placeholder="sk-ant-…">
+      </div>
+      <button class="btn btn-primary" onclick="saveSettings()">💾 Save</button>
+    </div>
+
+    <!-- Access PINs -->
+    <div class="card" style="margin-bottom:14px">
+      <h3 style="margin-bottom:12px">Access PINs</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="sf">
+          <label>Finance Manager PIN</label>
+          <input type="password" id="cfg-pinFinance" placeholder="Current PIN to change">
         </div>
-        <div style="margin-top:11px">
-          <button class="btn btn-primary" id="savePinBtn" onclick="savePins()">💾 Update PINs</button>
+        <div class="sf">
+          <label>Super Admin PIN</label>
+          <input type="password" id="cfg-pinAdmin" placeholder="Super Admin only">
         </div>
+      </div>
+      <div style="margin-top:10px">
+        <button class="btn btn-primary" onclick="saveSettings()">💾 Save PINs</button>
       </div>
     </div>
 
+    <!-- Employee List -->
     <div class="card" style="margin-bottom:14px">
-      <div class="settings-section">
-        <h3>👥 Employee List</h3>
-        <div class="sf full" style="margin-bottom:10px">
-          <label>One name per line — matched against OCR output</label>
-          <textarea id="cfg-employees" rows="9" style="resize:vertical;line-height:1.9"></textarea>
+      <h3 style="margin-bottom:12px">Employee List</h3>
+      <!-- Add new -->
+      <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:14px;flex-wrap:wrap">
+        <div class="sf" style="flex:1;min-width:160px">
+          <label>Name</label>
+          <input type="text" id="new-emp-name" placeholder="e.g. SURESH KUMAR" style="text-transform:uppercase">
         </div>
-        <button class="btn btn-primary" onclick="saveEmployees()">💾 Save Employee List</button>
+        <div class="sf" style="width:160px">
+          <label>Department</label>
+          <select id="new-emp-dept">
+            <option value="Pro. Staff">Pro. Staff</option>
+            <option value="Office Staff">Office Staff</option>
+            <option value="Own">Own</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="addNewEmployee()" style="align-self:flex-end">+ Add</button>
       </div>
+      <!-- Table -->
+      <div class="table-wrap" style="margin-bottom:12px">
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th style="text-align:left;padding-left:10px">Name</th><th>Department</th><th>Working Time</th><th></th></tr></thead>
+            <tbody id="empListBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="saveEmployees()">💾 Save Employee List</button>
     </div>
 
-    <div class="card" style="border-color:rgba(192,57,43,.2)">
-      <div class="settings-section" style="margin-bottom:0">
-        <h3 style="color:var(--danger)">⚠ Danger Zone</h3>
-        <div style="display:flex;gap:7px;flex-wrap:wrap">
-          <button class="btn btn-outline" style="border-color:var(--danger);color:var(--danger)" onclick="if(confirm('Clear all draft data?'))clearAllDrafts()">🗑 Clear All Drafts</button>
-          <button class="btn btn-outline" style="border-color:var(--danger);color:var(--danger)" onclick="disconnectGoogle()">✕ Disconnect Google</button>
-        </div>
+    <!-- Danger Zone -->
+    <div class="card" style="border-color:rgba(192,82,26,.3);background:rgba(192,82,26,.02)">
+      <h3 style="color:var(--danger);margin-bottom:12px">Danger Zone</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-outline" style="color:var(--danger);border-color:var(--danger)" onclick="clearAllDrafts()">🗑 Clear All Drafts</button>
       </div>
     </div>
   </div>
 </div>
 
-
-<!-- ══ REVIEW MANAGE MODAL ══ -->
-<div id="reviewMgmtModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;align-items:center;justify-content:center">
-  <div style="background:var(--surface);border-radius:var(--r);padding:24px;max-width:420px;width:90%;box-shadow:0 8px 40px rgba(0,0,0,.3)">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
-      <h2 style="font-family:Syne,sans-serif;font-size:17px">Manage Records</h2>
-      <button onclick="closeReviewMgmt()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted)">✕</button>
-    </div>
-    <div style="margin-bottom:12px;padding:12px;background:var(--surface2);border-radius:var(--rr)">
-      <div style="font-size:11px;font-weight:700;margin-bottom:8px;color:var(--muted);text-transform:uppercase">Clear by Date</div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <select id="mgmtDelDay" style="flex:1;font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface)"><option value="">Select day…</option></select>
-        <button class="btn btn-outline" style="font-size:11px;color:var(--danger);border-color:var(--danger)" onclick="deleteByDay()">Clear Day</button>
-      </div>
-    </div>
-    <div style="margin-bottom:12px;padding:12px;background:var(--surface2);border-radius:var(--rr)">
-      <div style="font-size:11px;font-weight:700;margin-bottom:8px;color:var(--muted);text-transform:uppercase">Clear by Employee</div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <select id="mgmtDelEmp" style="flex:1;font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface)"><option value="">Select employee…</option></select>
-        <button class="btn btn-outline" style="font-size:11px;color:var(--danger);border-color:var(--danger)" onclick="deleteByEmployee()">Clear Employee</button>
-      </div>
-    </div>
-    <div style="padding:12px;background:#fff0ee;border-radius:var(--rr);border:1px solid rgba(192,82,26,.2)">
-      <div style="font-size:11px;font-weight:700;margin-bottom:6px;color:var(--danger);text-transform:uppercase">Clear All</div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Wipes all draft records for this month.</div>
-      <button class="btn" style="font-size:11px;background:var(--danger);color:#fff;border:none;width:100%" onclick="clearAllAndRestart()">🗑 Clear All & Restart</button>
-    </div>
-    <div style="margin-top:12px;font-size:11px;color:var(--muted);text-align:center" id="mgmtStatus"></div>
-  </div>
-</div>
-
-<!-- ══ GATE PASS SCREEN ══ -->
 <div id="gatepassScreen" class="screen">
   <header>
     <div class="wordmark-hdr">solid<span>bench</span></div>
@@ -649,11 +624,11 @@ select:focus{border-color:var(--accent)}
 // CONFIG — fill these in for your deployment
 // ════════════════════════════════════════════════════════
 const CONFIG = {
-  CLIENT_ID:      'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com',
-  SPREADSHEET_ID: 'YOUR_GOOGLE_SPREADSHEET_ID',
-  SCOPES:         'https://www.googleapis.com/auth/spreadsheets',
-  PINS: { finance: '1111', superadmin: '2222' },
-  ANALYTICS_SHEET: '_Analytics',
+  WEB_APP_URL:    'https://script.google.com/macros/s/AKfycbxGc-10HAh36aZMj8U7-hGdqb0OYLN83rjTe2ugZ2GwcGyeolMKH-FKIIEYv7ztsYmi/exec',
+  ANTHROPIC_KEY:  '',
+  PINS:           { finance: '1111', superadmin: '2222' },
+  EMPLOYEES:      null,
+  ANALYTICS_SHEET:'_Analytics',
 };
 
 // Demo mode — set true if no real Sheets config yet
@@ -926,17 +901,19 @@ function clearPinErr() { document.getElementById('lockErr').textContent = ''; }
 // NAVIGATION
 // ════════════════════════════════════════════════════════
 function showPage(page) {
-  ['upload','review','analytics'].forEach(p => {
-    document.getElementById(p + 'Screen').classList.toggle('active', p === page);
-    // Update all nav buttons across screens
-    ['','2','3','4'].forEach(n => {
+  ['upload','review','analytics','settings','gatepass'].forEach(p => {
+    const el = document.getElementById(p + 'Screen');
+    if (el) el.classList.toggle('active', p === page);
+    ['','2','3','4','5'].forEach(n => {
       const btn = document.getElementById('nav' + n + '-' + p);
       if (btn) btn.classList.toggle('active', p === page);
     });
   });
-  if (page === 'analytics') { setTimeout(() => { loadAndRenderAnalytics(); }, 50); }
-  if (page === 'review') renderReview();
-  if (page === 'upload') loadHistory();
+  if (page === 'analytics') { setTimeout(() => { if(typeof loadAndRenderAnalytics==='function') loadAndRenderAnalytics(); }, 50); return; }
+  if (page === 'review')    { setTimeout(() => { renderReview(); }, 50); return; }
+  if (page === 'upload')    { setTimeout(() => { if(typeof loadHistory==='function') loadHistory(); }, 50); return; }
+  if (page === 'settings')  { setTimeout(() => { populateSettings(); }, 50); return; }
+  if (page === 'gatepass')  { setTimeout(() => { initGatePassPage(); }, 50); return; }
 }
 
 // ════════════════════════════════════════════════════════
@@ -1789,69 +1766,63 @@ function saveStoredConfig(extra) {
 function populateSettings() {
   try {
     const cfg = JSON.parse(localStorage.getItem(LS_CONFIG) || '{}');
-    document.getElementById('cfg-clientId').value = cfg.clientId || '';
-    document.getElementById('cfg-spreadsheetId').value = cfg.spreadsheetId || '';
-    document.getElementById('cfg-analyticsSheet').value = cfg.analyticsSheet || '_Analytics';
-    document.getElementById('cfg-employees').value = (cfg.employees || DEFAULT_EMPLOYEES).join('\n');
-    document.getElementById('cfg-pinFinance').value = '';
-    document.getElementById('cfg-pinAdmin').value = '';
-    const pb = document.getElementById('savePinBtn');
-    if (pb) pb.disabled = currentRole !== 'superadmin';
-  } catch {}
+    const el = id => document.getElementById(id);
+    if(el('cfg-webAppUrl')) el('cfg-webAppUrl').value = cfg.webAppUrl || CONFIG.WEB_APP_URL || '';
+    if(el('cfg-apiKey'))    el('cfg-apiKey').value    = cfg.apiKey    || CONFIG.ANTHROPIC_KEY || '';
+    if(el('cfg-pinFinance'))el('cfg-pinFinance').value = '';
+    if(el('cfg-pinAdmin'))  el('cfg-pinAdmin').value   = '';
+    renderEmployeeTable();
+  } catch(e) { console.error('populateSettings error:', e); }
 }
+
 
 function saveSettings() {
-  const clientId = document.getElementById('cfg-clientId').value.trim();
-  const spreadsheetId = document.getElementById('cfg-spreadsheetId').value.trim();
-  const analyticsSheet = document.getElementById('cfg-analyticsSheet').value.trim() || '_Analytics';
-  if (!clientId || !spreadsheetId) { toast('Client ID and Spreadsheet ID are required', 'err'); return; }
-  CONFIG.CLIENT_ID = clientId;
-  CONFIG.SPREADSHEET_ID = spreadsheetId;
-  CONFIG.ANALYTICS_SHEET = analyticsSheet;
-  saveStoredConfig({ clientId, spreadsheetId, analyticsSheet });
+  const el = id => document.getElementById(id);
+  const webAppUrl = el('cfg-webAppUrl')?.value.trim() || '';
+  const apiKey    = el('cfg-apiKey')?.value.trim()    || '';
+  const pinFin    = el('cfg-pinFinance')?.value.trim();
+  const pinAdmin  = el('cfg-pinAdmin')?.value.trim();
+
+  CONFIG.WEB_APP_URL    = webAppUrl || CONFIG.WEB_APP_URL;
+  CONFIG.ANTHROPIC_KEY  = apiKey    || CONFIG.ANTHROPIC_KEY;
+  if(pinFin)   CONFIG.PINS.finance    = pinFin;
+  if(pinAdmin) CONFIG.PINS.superadmin = pinAdmin;
+
+  const updates = {};
+  if(webAppUrl) updates.webAppUrl = webAppUrl;
+  if(apiKey)    updates.apiKey    = apiKey;
+  if(pinFin)    updates.pinFinance  = pinFin;
+  if(pinAdmin)  updates.pinSuperadmin = pinAdmin;
+  saveStoredConfig(updates);
   toast('Settings saved ✓', 'ok');
-  initSheetsAuth();
 }
 
-function saveEmployees() {
-  const raw = document.getElementById('cfg-employees').value;
-  const emps = raw.split('\n').map(e => e.trim()).filter(Boolean);
-  CONFIG.EMPLOYEES = emps;
-  saveStoredConfig({ employees: emps });
-  toast('Saved ' + emps.length + ' employees ✓', 'ok');
+function testConnection() {
+  const url = document.getElementById('cfg-webAppUrl')?.value.trim() || CONFIG.WEB_APP_URL;
+  if(!url){toast('Enter Web App URL first','err');return;}
+  const btn=document.getElementById('testConnBtn'),st=document.getElementById('connStatus');
+  if(btn)btn.textContent='Testing…';
+  fetch(url+'?action=ping')
+    .then(r=>r.json())
+    .then(d=>{
+      if(st)st.textContent='✓ Connected! '+( d.data?.message||'');
+      if(st)st.style.color='var(--green)';
+      if(btn)btn.textContent='🔌 Test Connection';
+    })
+    .catch(e=>{
+      if(st)st.textContent='✗ Failed: '+e.message;
+      if(st)st.style.color='var(--danger)';
+      if(btn)btn.textContent='🔌 Test Connection';
+    });
 }
 
-function savePins() {
-  if (currentRole !== 'superadmin') { toast('Only Super Admin can change PINs', 'err'); return; }
-  const pf = document.getElementById('cfg-pinFinance').value.trim();
-  const pa = document.getElementById('cfg-pinAdmin').value.trim();
-  if ((pf && pf.length < 4) || (pa && pa.length < 4)) { toast('PINs must be at least 4 digits', 'err'); return; }
-  if (pf) CONFIG.PINS.finance = pf;
-  if (pa) CONFIG.PINS.superadmin = pa;
-  saveStoredConfig({ pins: CONFIG.PINS });
-  document.getElementById('cfg-pinFinance').value = '';
-  document.getElementById('cfg-pinAdmin').value = '';
-  toast('PINs updated ✓', 'ok');
+function clearAllDrafts() {
+  if(!confirm('Clear all local draft data?'))return;
+  Object.keys(localStorage).filter(k=>k.startsWith('sb_att_')||k.startsWith('sb_gp_')).forEach(k=>localStorage.removeItem(k));
+  reviewRecords=[];
+  toast('All drafts cleared','ok');
 }
 
-async function testSheets() {
-  const res = document.getElementById('testResult');
-  res.className = 'test-result';
-  if (!CONFIG.CLIENT_ID || CONFIG.CLIENT_ID.includes('YOUR_')) {
-    res.className = 'test-result err'; res.textContent = '✗ Save your Client ID first.'; return;
-  }
-  if (!sheetsReady) {
-    res.className = 'test-result err'; res.textContent = '✗ Not connected. Click "Connect Google →" first.'; return;
-  }
-  try {
-    const r = await fetch('https://sheets.googleapis.com/v4/spreadsheets/' + CONFIG.SPREADSHEET_ID + '?fields=properties.title',
-      { headers: { Authorization: 'Bearer ' + sheetsToken } });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const d = await r.json();
-    res.className = 'test-result ok';
-    res.textContent = '✓ Connected! Sheet: "' + (d.properties?.title || CONFIG.SPREADSHEET_ID) + '"';
-  } catch(e) { res.className = 'test-result err'; res.textContent = '✗ ' + e.message; }
-}
 
 function disconnectGoogle() {
   sheetsToken = null; sheetsReady = false;
@@ -2223,6 +2194,61 @@ function runSmartAllocation(){
     }).join('');
   }
   toast('Allocation calculated ✓','ok');
+}
+
+
+function getEmployeeObjects() {
+  try {
+    const cfg=JSON.parse(localStorage.getItem(LS_CONFIG)||'{}');
+    if(cfg.employeesObj&&cfg.employeesObj.length) return cfg.employeesObj;
+    if(cfg.employees&&cfg.employees.length) return cfg.employees.map(name=>({name,dept:DEPT_MAP[name]||DEPT_MAP[name.toUpperCase()]||'Pro. Staff'}));
+  } catch{}
+  return typeof DEFAULT_EMPLOYEES_OBJ!=='undefined'?[...DEFAULT_EMPLOYEES_OBJ]:DEFAULT_EMPLOYEES.map(n=>({name:n,dept:DEPT_MAP[n]||'Pro. Staff'}));
+}
+function saveEmployeeObjects(emps) {
+  const names=emps.map(e=>e.name);
+  CONFIG.EMPLOYEES=names;
+  emps.forEach(e=>{DEPT_MAP[e.name]=e.dept;DEPT_MAP[e.name.toUpperCase()]=e.dept;});
+  saveStoredConfig({employeesObj:emps,employees:names});
+}
+function renderEmployeeTable() {
+  const body=document.getElementById('empListBody');if(!body)return;
+  const emps=getEmployeeObjects();
+  const wt={'Pro. Staff':'08:30','Office Staff':'09:00','Own':'—'};
+  body.innerHTML=emps.map(e=>'<tr>'
+    +'<td style="padding:6px 10px;font-weight:600;font-size:12px">'+e.name+'</td>'
+    +'<td style="text-align:center"><select data-empname="'+e.name.replace(/&/g,'&amp;').replace(/"/g,'&quot;')+'" onchange="changeEmployeeDeptAttr(this)" style="font-size:11px;padding:3px 6px;border-radius:4px;border:1px solid var(--border);background:var(--surface2)">'
+    +'<option value="Pro. Staff"'+(e.dept==='Pro. Staff'?' selected':'')+'>Pro. Staff</option>'
+    +'<option value="Office Staff"'+(e.dept==='Office Staff'?' selected':'')+'>Office Staff</option>'
+    +'<option value="Own"'+(e.dept==='Own'?' selected':'')+'>Own</option>'
+    +'</select></td>'
+    +'<td style="text-align:center;font-size:11px;color:var(--muted);font-family:DM Mono">'+(wt[e.dept]||'—')+'</td>'
+    +'<td style="text-align:center"><button class="btn btn-outline" style="font-size:9px;padding:2px 7px;color:var(--danger);border-color:var(--danger)" data-empname="'+e.name.replace(/&/g,'&amp;').replace(/"/g,'&quot;')+'" onclick="removeEmployeeAttr(this)">✕</button></td>'
+    +'</tr>').join('');
+}
+function changeEmployeeDeptAttr(sel){changeEmployeeDept(sel.dataset.empname,sel.value);}
+function removeEmployeeAttr(btn){removeEmployee(btn.dataset.empname);}
+function changeEmployeeDept(name,newDept){
+  const emps=getEmployeeObjects();const emp=emps.find(e=>e.name===name);
+  if(emp){emp.dept=newDept;saveEmployeeObjects(emps);renderEmployeeTable();toast(name+' → '+newDept,'ok');}
+}
+function removeEmployee(name){
+  if(!confirm('Remove '+name+'?'))return;
+  const emps=getEmployeeObjects().filter(e=>e.name!==name);
+  saveEmployeeObjects(emps);renderEmployeeTable();toast(name+' removed','ok');
+}
+function addNewEmployee(){
+  const nameEl=document.getElementById('new-emp-name'),deptEl=document.getElementById('new-emp-dept');
+  if(!nameEl||!deptEl)return;
+  const name=nameEl.value.trim().toUpperCase(),dept=deptEl.value;
+  if(!name){toast('Enter name','err');return;}
+  const emps=getEmployeeObjects();
+  if(emps.find(e=>e.name.toUpperCase()===name)){toast(name+' already exists','err');return;}
+  emps.push({name,dept});saveEmployeeObjects(emps);nameEl.value='';
+  renderEmployeeTable();toast(name+' added as '+dept+' ✓','ok');
+}
+function saveEmployees(){
+  const emps=getEmployeeObjects();saveEmployeeObjects(emps);toast('Saved '+emps.length+' employees ✓','ok');
 }
 
 </script>
