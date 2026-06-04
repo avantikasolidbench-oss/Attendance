@@ -185,6 +185,28 @@ select:focus{border-color:var(--accent)}
 .test-result.ok{background:rgba(29,122,72,.08);color:var(--green);border:1px solid rgba(29,122,72,.2);display:block}
 .test-result.err{background:rgba(192,57,43,.08);color:var(--danger);border:1px solid rgba(192,57,43,.2);display:block}
 
+
+/* ─── REVIEW GRID ─── */
+.rv-grid-wrap{overflow:auto;border:1px solid var(--border);border-radius:var(--r);background:var(--surface);height:calc(100vh - 240px);position:relative;outline:none}
+.rv-table{border-collapse:collapse;font-size:11px;font-family:"DM Mono",monospace;width:100%}
+.rv-table th{background:var(--surface2);padding:5px 7px;text-align:center;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);border:1px solid var(--border);white-space:nowrap;position:sticky;top:0;z-index:5;box-shadow:0 2px 0 var(--border)}
+.rv-table th.emp-col{left:0;z-index:6;min-width:130px;text-align:left;padding-left:10px}
+.rv-table th.sun{color:var(--danger)}
+.rv-table td{border:1px solid var(--border);padding:0;vertical-align:middle;text-align:center}
+.rv-table td.emp-name{position:sticky;left:0;background:var(--surface);z-index:2;padding:4px 10px;text-align:left;font-family:"Nunito",sans-serif;font-weight:700;font-size:11px;white-space:nowrap;min-width:130px;border-right:2px solid var(--border)}
+.rv-row-lbl{font-size:9px;font-weight:700;color:var(--muted);padding:2px 5px;background:var(--surface2);white-space:nowrap;position:sticky;left:130px;z-index:2;border-right:1px solid var(--border)}
+.rv-cell{min-width:50px;max-width:50px;height:21px;padding:0}
+.rv-cell input{width:100%;height:100%;border:none;background:transparent;text-align:center;font-family:"DM Mono",monospace;font-size:10px;color:var(--text);outline:none;padding:0 2px;cursor:pointer}
+.rv-cell input:focus{background:rgba(192,82,26,.15);cursor:text}
+.rv-cell.absent{background:#fde8e3}.rv-cell.late{background:#fff3cd}.rv-cell.ot{background:#e8f4fd}
+.rv-cell.present{background:#f0faf4}.rv-cell.sun{background:#fff9e6}.rv-cell.holiday{background:#e8f0e8}
+.rv-cell.low-conf{outline:2px solid var(--danger);outline-offset:-2px}.rv-cell.empty{background:var(--surface2)}
+.rv-cell.sts-p{background:#e8f5e9;font-weight:700;color:var(--green)}.rv-cell.sts-a{background:#fde8e3;font-weight:700;color:var(--danger)}
+.rv-cell.sts-ws{background:#e3f2fd;font-weight:700;color:var(--blue)}.rv-cell.sts-sun{background:#fff9e6;color:#9a5800}
+.rv-cell.sts-h{background:#e8f0e8;font-weight:700;color:var(--green)}.rv-cell.sts-l{background:#f3e5f5;font-weight:700;color:#7b1fa2}
+.rv-legend{display:flex;gap:12px;flex-wrap:wrap;font-size:10px;color:var(--muted);margin-top:8px;align-items:center}
+.rv-legend-dot{width:12px;height:12px;border-radius:2px;display:inline-block;margin-right:3px;vertical-align:middle}
+
 /* ─── TOAST ─── */
 #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(60px);background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:10px 18px;font-size:12px;font-weight:600;z-index:9999;transition:transform .3s;box-shadow:0 8px 28px rgba(0,0,0,.13);white-space:nowrap;max-width:90vw;text-align:center}
 #toast.show{transform:translateX(-50%) translateY(0)}
@@ -344,17 +366,20 @@ select:focus{border-color:var(--accent)}
         <button class="btn btn-green" onclick="finaliseAndSave()">✓ Approve &amp; Save to Sheets</button>
       </div>
     </div>
-    <div class="table-wrap">
-      <div class="table-scroll">
-        <table>
-          <thead><tr>
-            <th>#</th><th>Employee</th><th>Date</th>
-            <th>IN</th><th>OUT</th><th>Hours</th>
-            <th>Status</th><th>Note / Flag</th><th>Conf</th>
-          </tr></thead>
-          <tbody id="reviewBody"></tbody>
-        </table>
-      </div>
+    <div class="rv-grid-wrap" id="rvGridWrap" tabindex="0">
+      <table class="rv-table" id="rvGrid"></table>
+    </div>
+
+    <div class="rv-legend">
+      <span><span class="rv-legend-dot" style="background:#f0faf4;border:1px solid #ccc"></span>Present</span>
+      <span><span class="rv-legend-dot" style="background:#fde8e3;border:1px solid #ccc"></span>Absent</span>
+      <span><span class="rv-legend-dot" style="background:#fff3cd;border:1px solid #ccc"></span>Late</span>
+      <span><span class="rv-legend-dot" style="background:#e8f4fd;border:1px solid #ccc"></span>Overtime</span>
+      <span><span class="rv-legend-dot" style="background:#fff9e6;border:1px solid #ccc"></span>Sunday</span>
+      <span><span class="rv-legend-dot" style="background:#e8f0e8;border:1px solid #ccc"></span>Holiday</span>
+      <span><span class="rv-legend-dot" style="background:transparent;border:2px solid var(--danger)"></span>Low confidence</span>
+      <span><span class="rv-legend-dot" style="background:#daeaf7;border:1px solid #ccc"></span>Summary</span>
+      <span style="margin-left:auto;font-size:10px;color:var(--muted)">Click any IN/OUT cell to edit inline · Tab/Enter/Arrows to navigate</span>
     </div>
     <div style="display:flex;gap:14px;font-size:10px;color:var(--muted);margin-top:8px">
       <span><span class="conf-bar conf-hi"></span>High (&gt;90%)</span>
@@ -1197,42 +1222,281 @@ function loadReviewDraft() {
 let rvFilterMode = 'all';
 
 function renderReview() {
-  const data = rvFilterMode === 'low' ? reviewRecords.filter(r => r.conf < 70)
-    : rvFilterMode === 'flag' ? reviewRecords.filter(r => r.late || r.note)
-    : reviewRecords;
+  const MONTH_NUMS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const DAY_NAMES_W=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const grid = document.getElementById('rvGrid');
+  if (!grid) return;
 
   document.getElementById('rvTotal').textContent = reviewRecords.length;
-  document.getElementById('rvLow').textContent = reviewRecords.filter(r => r.conf < 70).length;
-  document.getElementById('rvFlagged').textContent = reviewRecords.filter(r => r.late || r.note).length;
+  document.getElementById('rvLow').textContent = reviewRecords.filter(r=>r.conf<70).length;
+  document.getElementById('rvFlagged').textContent = reviewRecords.filter(r=>r.late||r.note).length;
+  const saveEl = document.getElementById('rvSaveIndicator');
+  if (saveEl) saveEl.textContent = '';
 
-  const body = document.getElementById('reviewBody');
   if (!reviewRecords.length) {
-    body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:28px;color:var(--muted)">No records loaded. Upload a register or click Review on a month.</td></tr>';
+    grid.innerHTML='<tr><td style="padding:40px;text-align:center;color:var(--muted);font-family:Nunito">No records. Upload a register or load a draft.</td></tr>';
     return;
   }
 
-  body.innerHTML = data.map(r => {
-    const confCls = r.conf >= 90 ? 'conf-hi' : r.conf >= 70 ? 'conf-md' : 'conf-lo';
-    const rowCls = r.conf < 70 ? ' class="low-row"' : '';
-    const statusBadge = r.status === 'Absent' ? 'b-err' : r.status === 'Overtime' ? 'b-warn' : r.status === 'Late' ? 'b-warn' : 'b-ok';
-    const lateCheck = '<input type="checkbox" ' + (r.late ? 'checked' : '') + ' onchange="toggleLate(' + r.id + ',this.checked)" title="Mark as late arrival" style="cursor:pointer;accent-color:var(--danger)">';
-    return '<tr' + rowCls + '>' +
-      '<td class="mono">' + r.id + '</td>' +
-      '<td><b>' + r.emp + '</b></td>' +
-      '<td class="mono">' + r.date + '</td>' +
-      '<td><input class="editable" value="' + r.inTime + '" onchange="updateRec(' + r.id + ',\'inTime\',this.value)"></td>' +
-      '<td><input class="editable" value="' + r.outTime + '" onchange="updateRec(' + r.id + ',\'outTime\',this.value)"></td>' +
-      '<td class="mono">' + r.hours + '</td>' +
-      '<td><span class="badge ' + statusBadge + '">' + r.status + '</span></td>' +
-      '<td style="display:flex;align-items:center;gap:6px">' + lateCheck +
-        '<input class="note-input" placeholder="Add note…" value="' + (r.note||'') + '" onchange="updateRec(' + r.id + ',\'note\',this.value)"></td>' +
-      '<td><span class="conf-bar ' + confCls + '"></span>' + r.conf + '%</td>' +
-      '</tr>';
-  }).join('');
+  const label = document.getElementById('reviewMonthLabel').textContent;
+  const parts = label.split(' '), monthName=parts[0], year=+parts[1];
+  const monthIdx = MONTH_NUMS.indexOf(monthName);
+  const daysInMonth = (monthIdx>=0&&year) ? new Date(year,monthIdx+1,0).getDate() : 31;
+  const holidays = (typeof getHolidaysForMonth==='function') ? getHolidaysForMonth(monthName,year) : [];
+  const holidaySet = new Set(holidays);
 
-  // Auto-save draft on any render
+  function dow(d) {
+    if(monthIdx<0||!year) return '';
+    const day=new Date(year,monthIdx,d).getDay();
+    return day===0?'Sun':DAY_NAMES_W[day-1];
+  }
+
+  // Build emp→day map
+  const empOrder=[], empDayMap={};
+  reviewRecords.forEach(r => {
+    if(!empOrder.includes(r.emp)) empOrder.push(r.emp);
+    let d; try{const dt=new Date(r.date);d=isNaN(dt.getDate())?parseInt(r.date):dt.getDate();}catch{return;}
+    if(!d||d<1||d>31)return;
+    if(!empDayMap[r.emp+'|'+d]) empDayMap[r.emp+'|'+d]=[];
+    empDayMap[r.emp+'|'+d].push(r);
+  });
+
+  // Apply filter
+  let filteredEmps = empOrder;
+  if(rvFilterMode==='low') filteredEmps=empOrder.filter(e=>reviewRecords.some(r=>r.emp===e&&r.conf<70));
+  else if(rvFilterMode==='flag') filteredEmps=empOrder.filter(e=>reviewRecords.some(r=>r.emp===e&&(r.late||r.note)));
+
+  const SUM_COLS=['T.P','W/S','SUN','T.H','T.L','T.A','T.W.Day','T.Day','OT Time'];
+
+  // Header
+  let html='<thead><tr>';
+  html+='<th class="emp-col">Employee</th>';
+  html+='<th style="left:130px;position:sticky;z-index:6;background:var(--surface2);min-width:28px"></th>';
+  for(let d=1;d<=daysInMonth;d++){
+    const dn=dow(d),isSun=(dn==='Sun'),isHol=holidaySet.has(d);
+    const cls=isSun?' class="sun"':isHol?' style="color:var(--green)"':'';
+    html+='<th'+cls+'>'+d+'<br><span style="font-weight:400;font-size:8px">'+dn+'</span></th>';
+  }
+  SUM_COLS.forEach(s=>html+='<th style="min-width:46px;background:#daeaf7;color:#1a5a9e;font-size:9px;position:sticky;right:0;z-index:5">'+s+'</th>');
+  html+='</tr></thead><tbody>';
+
+  filteredEmps.forEach((emp,ei)=>{
+    const rowTypes=['IN','OUT','OT','STS'];
+
+    // Pre-calculate summary
+    let cP=0,cWS=0,cSun=0,cH=0,cL=0,cA=0,totalOTMins=0;
+    for(let d=1;d<=daysInMonth;d++){
+      const dn=dow(d),isSun=(dn==='Sun'),isHol=holidaySet.has(d);
+      const rec=(empDayMap[emp+'|'+d]||[])[0];
+      if(isHol){cH++;}
+      else if(isSun){
+        if(rec&&rec.inTime&&!['','A','Sun','L','H'].includes(rec.inTime))cWS++;
+        else if(rec&&rec.status==='Absent')cA++;
+        else cSun++;
+      }else if(!rec||rec.status==='Absent'||rec.inTime==='A'||(!rec.inTime&&!rec.outTime)){cA++;}
+      else if(['L','M'].includes(rec.inTime)){cL++;}
+      else{cP++;}
+      if(rec&&rec.inTime&&rec.outTime&&rec.status!=='Absent'){
+        try{
+          const empDept2=DEPT_MAP[emp]||DEPT_MAP[emp.toUpperCase()]||'Pro. Staff';
+          const std=isSun?0.5:(empDept2==='Office Staff'?9.0:8.5);
+          const[ih,im]=rec.inTime.split(':').map(Number),[oh,om]=rec.outTime.split(':').map(Number);
+          totalOTMins+=Math.round(Math.max((oh+om/60)-(ih+im/60)-std,0)*60);
+        }catch{}
+      }
+    }
+    const tW=cP+cWS+cSun+cH+cL;
+    const otStr=totalOTMins>0?Math.floor(totalOTMins/60)+'h'+(totalOTMins%60>0?totalOTMins%60+'m':''):'—';
+    const sumVals=[cP,cWS,cSun,cH,cL,cA,tW,tW+cA,otStr];
+
+    rowTypes.forEach((type,ti)=>{
+      html+='<tr>';
+      if(ti===0){
+        const hasLow=reviewRecords.some(r=>r.emp===emp&&r.conf<70);
+        html+='<td class="emp-name" rowspan="4">'+(hasLow?'<span style="color:var(--danger);font-size:9px">● </span>':'')+emp+'</td>';
+      }
+      const lblColor=type==='IN'?'#1d7a48':type==='OUT'?'#1a5a9e':type==='OT'?'#9a5800':'#555';
+      html+='<td class="rv-row-lbl" style="color:'+lblColor+'">'+type+'</td>';
+
+      for(let d=1;d<=daysInMonth;d++){
+        const col=d,dn=dow(d),isSun=(dn==='Sun'),isHol=holidaySet.has(d);
+        const rec=(empDayMap[emp+'|'+d]||[])[0];
+        let cellVal='',cellClass='rv-cell',isLowConf=false;
+
+        if(isSun&&!rec){cellVal='Sun';cellClass+=' sun';}
+        else if(isHol){cellVal='H';cellClass+=' holiday';}
+        else if(!rec){cellClass+=' empty';}
+        else{
+          isLowConf=rec.conf<70;
+          if(isLowConf)cellClass+=' low-conf';
+          if(type==='IN'){
+            cellVal=rec.inTime||(rec.status==='Absent'?'A':'');
+            cellClass+=rec.status==='Absent'?' absent':rec.late?' late':isSun?' sun':' present';
+          }else if(type==='OUT'){
+            cellVal=rec.outTime||(rec.status==='Absent'?'A':'');
+            cellClass+=rec.status==='Absent'?' absent':rec.ot?' ot':isSun?' sun':' present';
+          }else if(type==='OT'){
+            if(rec.inTime&&rec.outTime&&rec.status!=='Absent'){
+              try{
+                const empDept3=DEPT_MAP[emp]||DEPT_MAP[emp.toUpperCase()]||'Pro. Staff';
+                const std=isSun?0.5:(empDept3==='Office Staff'?9.0:8.5);
+                const[ih,im]=rec.inTime.split(':').map(Number),[oh,om]=rec.outTime.split(':').map(Number);
+                const ot=Math.max((oh+om/60)-(ih+im/60)-std,0);
+                cellVal=ot>0.01?Math.floor(ot)+'h'+(ot%1>0.01?Math.round(ot%1*60)+'m':''):'—';
+                cellClass+=ot>0.01?' ot':' present';
+              }catch{cellVal='—';cellClass+=' empty';}
+            }else{cellVal='—';cellClass+=' empty';}
+          }else if(type==='STS'){
+            if(isSun){cellVal='W/S';cellClass+=' sts-ws';}
+            else if(rec.status==='Absent'){cellVal='A';cellClass+=' sts-a';}
+            else if(rec.late){cellVal='L*';cellClass+=' sts-l';}
+            else{cellVal='P';cellClass+=' sts-p';}
+          }
+        }
+
+        if((type==='IN'||type==='OUT')&&!isHol&&!isSun){
+          const field=type==='IN'?'inTime':'outTime';
+          const safeEmp=emp.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+          const displayVal=isSun?'Sun':(cellVal||'');
+          html+='<td class="'+cellClass+'">'
+            +'<input value="'+displayVal+'" placeholder="—"'
+            +' data-emp="'+safeEmp+'" data-day="'+d+'" data-field="'+field+'"'
+            +' onchange="updateRecByEmpDayAttr(this)"'
+            +' onfocus="this.select()"'
+            +' title="'+(isLowConf?'⚠ Low confidence':'')+'"'
+            +'></td>';
+        }else{
+          html+='<td class="'+cellClass+'" title="'+(rec&&rec.note?'Note: '+rec.note:'')+'">'
+            +'<span style="font-size:10px;padding:2px 3px">'+cellVal+'</span></td>';
+        }
+      }
+
+      // Summary cols
+      if(ti===0){
+        sumVals.forEach((v,si)=>{
+          const isOT=(si===8),isEmpty=!isOT&&v===0;
+          html+='<td style="text-align:center;font-size:11px;font-weight:700;background:#daeaf7;'
+            +'color:'+(isOT&&v!=='—'?'#1a5a9e':isEmpty?'#ccc':'#222')
+            +';padding:3px 5px;border:1px solid #c5dcef;white-space:nowrap">'
+            +(isEmpty?'—':v)+'</td>';
+        });
+      }else{
+        sumVals.forEach(()=>html+='<td style="background:#daeaf7;border:1px solid #c5dcef"></td>');
+      }
+      html+='</tr>';
+    });
+    html+='<tr><td colspan="'+(daysInMonth+2+SUM_COLS.length)+'" style="height:3px;background:var(--border);padding:0"></td></tr>';
+  });
+  html+='</tbody>';
+  grid.innerHTML=html;
+  if(typeof initGridKeyboard==='function') initGridKeyboard();
   autoSaveReviewDraft();
 }
+
+function updateRecByEmpDayAttr(input) {
+  updateRecByEmpDay(input.dataset.emp, +input.dataset.day, input.dataset.field, input.value);
+}
+
+function updateRecByEmpDay(emp, dayNum, field, value) {
+  if(!value||value==='—') return;
+  const MONTH_NUMS2=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  let recs = reviewRecords.filter(r=>{
+    try{const d=new Date(r.date);return r.emp===emp&&(isNaN(d.getDate())?parseInt(r.date):d.getDate())===dayNum;}catch{return false;}
+  });
+  if(!recs.length){
+    const label=document.getElementById('reviewMonthLabel').textContent;
+    const parts=label.split(' '),mName=parts[0],yr=+parts[1];
+    const mIdx=MONTH_NUMS2.indexOf(mName);
+    const dt=new Date(yr,mIdx,dayNum);
+    const SHORT=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const DAY_NAMES2=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const newRec={id:Date.now(),emp,date:String(dayNum).padStart(2,'0')+' '+SHORT[mIdx]+' '+yr,
+      day:DAY_NAMES2[dt.getDay()],inTime:field==='inTime'?value:'',outTime:field==='outTime'?value:'',
+      hours:'—',status:'Present',late:false,note:'',ot:false,conf:85};
+    reviewRecords.push(newRec);
+    recs=[newRec];
+  }
+  recs.forEach(r=>{
+    r[field]=value;
+    if(value&&value!=='A'&&r.status==='Absent'){r.status='Present';}
+    if(r.inTime&&r.outTime){
+      try{
+        const[ih,im]=r.inTime.split(':').map(Number),[oh,om]=r.outTime.split(':').map(Number);
+        const hrs=(oh+om/60)-(ih+im/60);
+        r.hours=hrs>0?Math.round(hrs*10)/10:0;
+        r.ot=hrs>9;r.status=hrs>9?'Overtime':r.status==='Absent'?'Present':r.status;
+      }catch{}
+    }
+    r.conf=Math.min(r.conf+20,99);
+  });
+  autoSaveReviewDraft();
+  renderReview();
+}
+
+function autoSaveReviewDraft() {
+  const label=document.getElementById('reviewMonthLabel').textContent;
+  if(!label||label==='—'||!reviewRecords.length)return;
+  const parts=label.split(' ');if(parts.length<2)return;
+  const month=parts[0],year=+parts[1];if(!month||!year)return;
+  localStorage.setItem('sb_att_draft_'+month+'_'+year,JSON.stringify({month,year,records:reviewRecords,savedAt:new Date().toISOString()}));
+  const el=document.getElementById('rvSaveIndicator');
+  if(el){el.textContent='💾 Draft saved '+new Date().toLocaleTimeString();el.style.opacity='1';setTimeout(()=>el.style.opacity='0.4',2000);}
+}
+
+function initGridKeyboard() {
+  const wrap=document.getElementById('rvGridWrap');
+  if(!wrap||wrap._keyboardBound)return;
+  wrap._keyboardBound=true;
+  wrap.addEventListener('keydown',e=>{
+    const active=document.activeElement;
+    const isInput=active&&active.tagName==='INPUT'&&active.closest('#rvGridWrap');
+    if(!isInput&&e.target!==wrap)return;
+    const table=document.getElementById('rvGrid');if(!table)return;
+    const allRows=Array.from(table.querySelectorAll('tbody tr'));
+    const editableRows=allRows.filter(r=>{const l=r.querySelector('.rv-row-lbl');return l&&(l.textContent.trim()==='IN'||l.textContent.trim()==='OUT');});
+    const key=e.key;
+    if(key==='Tab'){
+      e.preventDefault();
+      if(!isInput){const f=editableRows[0]?.querySelector('.rv-cell input');if(f){f.focus();f.select();}return;}
+      const tr=active.closest('tr');
+      const inputs=tr?Array.from(tr.querySelectorAll('.rv-cell input:not([readonly])')):[];
+      const cur=inputs.indexOf(active);
+      if(!e.shiftKey){if(cur<inputs.length-1){inputs[cur+1].focus();inputs[cur+1].select();}else{moveVertKB(active,editableRows,1);}}
+      else{if(cur>0){inputs[cur-1].focus();inputs[cur-1].select();}else{moveVertKB(active,editableRows,-1,true);}}
+      return;
+    }
+    if(key==='Enter'&&isInput){e.preventDefault();moveVertKB(active,editableRows,1);return;}
+    if(key==='ArrowDown'||key==='ArrowUp'){e.preventDefault();moveVertKB(active,editableRows,key==='ArrowDown'?1:-1);return;}
+    if(key==='ArrowRight'||key==='ArrowLeft'){
+      e.preventDefault();
+      if(!isInput)return;
+      const tr=active.closest('tr');
+      const inputs=tr?Array.from(tr.querySelectorAll('.rv-cell input:not([readonly])')):[];
+      const cur=inputs.indexOf(active),next=key==='ArrowRight'?inputs[cur+1]:inputs[cur-1];
+      if(next){next.focus();next.select();scrollCellKB(next);}
+      return;
+    }
+    if(key==='Escape'&&isInput){active.blur();wrap.focus();}
+  });
+}
+function moveVertKB(active,rows,dir,last){
+  const tr=active.closest('tr'),curIdx=rows.indexOf(tr);
+  let next=curIdx+dir;
+  while(next>=0&&next<rows.length){
+    const inputs=Array.from(rows[next].querySelectorAll('.rv-cell input:not([readonly])'));
+    if(inputs.length){const t=last?inputs[inputs.length-1]:inputs[Math.min(rows[curIdx]?Array.from(rows[curIdx].querySelectorAll('.rv-cell input')).indexOf(active):0,inputs.length-1)];t.focus();t.select();scrollCellKB(t);return;}
+    next+=dir;
+  }
+}
+function scrollCellKB(el){
+  const wrap=document.getElementById('rvGridWrap');if(!wrap||!el)return;
+  const wr=wrap.getBoundingClientRect(),er=el.getBoundingClientRect();
+  if(er.right>wr.right-10)wrap.scrollLeft+=er.right-wr.right+60;
+  if(er.left<wr.left+165)wrap.scrollLeft-=wr.left+165-er.left+10;
+  if(er.bottom>wr.bottom-10)wrap.scrollTop+=er.bottom-wr.bottom+30;
+  if(er.top<wr.top+30)wrap.scrollTop-=wr.top+30-er.top;
+}
+
 
 function rvFilter(f) {
   rvFilterMode = f;
